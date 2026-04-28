@@ -4,8 +4,8 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import Welcome from "./screens/Welcome/Welcome";
 import Install from "./screens/Install/Install";
 import Setup from "./screens/Setup/Setup";
-import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
+import { Layout80m } from "./components/80m";
 import { useI18n } from "./components/useI18n";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
@@ -117,7 +117,7 @@ function App(): React.JSX.Element {
       case "setup":
         return <Setup onComplete={() => setScreen("main")} />;
       case "main":
-        return <Layout />;
+        return <Layout80m />;
     }
   }
 

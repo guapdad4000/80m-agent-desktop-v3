@@ -1,23 +1,24 @@
 import { useEffect } from "react";
-import splashBg from "../../assets/splash.png";
-import splashLogo from "../../assets/splashtext.png";
 
-interface SplashScreenProps {
+interface Props {
   onFinished: () => void;
 }
 
-function SplashScreen({ onFinished }: SplashScreenProps): React.JSX.Element {
+export default function SplashScreen({ onFinished }: Props): React.JSX.Element {
   useEffect(() => {
-    const doneTimer = setTimeout(() => onFinished(), 4000);
-    return () => clearTimeout(doneTimer);
+    const timer = setTimeout(onFinished, 2200);
+    return () => clearTimeout(timer);
   }, [onFinished]);
 
   return (
     <div className="splash-screen">
-      <img className="splash-bg" src={splashBg} alt="" />
-      <img className="splash-logo" src={splashLogo} alt="Hermes Agent" />
+      <div className="splash-80m">
+        <div className="splash-80m-logo">
+          80<span>M</span>
+        </div>
+        <div className="splash-80m-tagline">Agent Control</div>
+        <div className="splash-80m-bar" />
+      </div>
     </div>
   );
 }
-
-export default SplashScreen;
