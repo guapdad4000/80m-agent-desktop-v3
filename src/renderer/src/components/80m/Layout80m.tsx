@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, ReactNode } from 'react';
+import { useI18n } from '../useI18n';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
 import Settings from './Settings';
@@ -25,6 +26,7 @@ type View =
   | 'schedules';
 
 const Layout80m: React.FC = () => {
+  const { t } = useI18n();
   const [activeView, setActiveView] = useState<View>('chat');
   const [currentSession, setCurrentSession] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -71,6 +73,16 @@ const Layout80m: React.FC = () => {
   }, []);
 
   const renderMainContent = () => {
+    const wrap = (title: string, el: ReactNode) => (
+      <div className="main-80m">
+        <div className="screen-header-80m">
+          <span className="screen-header-80m-title">{t(title)}</span>
+        </div>
+        <div className="screen-content-80m">
+          {el}
+        </div>
+      </div>
+    );
     switch (activeView) {
       case 'chat':
         return (
@@ -91,21 +103,21 @@ const Layout80m: React.FC = () => {
           />
         );
       case 'memory':
-        return <Memory />;
+        return wrap('memory.title', <Memory />);
       case 'soul':
-        return <Soul />;
+        return wrap('soul.title', <Soul />);
       case 'skills':
-        return <Skills />;
+        return wrap('skills.title', <Skills />);
       case 'tools':
-        return <Tools />;
+        return wrap('tools.title', <Tools />);
       case 'gateway':
-        return <Gateway />;
+        return wrap('gateway.title', <Gateway />);
       case 'settings':
-        return <Settings onBack={handleBackToChat} />;
+        return wrap('settings.title', <Settings onBack={handleBackToChat} />);
       case 'models':
-        return <Models />;
+        return wrap('models.title', <Models />);
       case 'schedules':
-        return <Schedules />;
+        return wrap('schedules.title', <Schedules />);
       default:
         return (
           <ChatArea
