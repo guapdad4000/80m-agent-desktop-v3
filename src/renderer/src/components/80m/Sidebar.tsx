@@ -150,6 +150,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div className="sidebar-80m">
       {/* Brand Header with Animated80MLogo */}
       <div className="sidebar-80m-brand">
+        <img 
+          src="https://i.postimg.cc/d18ByxQX/Beige-ATM-with-transparent-screen.png" 
+          alt="80M ATM Mascot" 
+          style={{ height: 48, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }} 
+        />
         <Animated80MLogo />
       </div>
 
