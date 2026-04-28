@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import AtmMascot from './AtmMascot';
 import { AgentTab, AGENTS, type AgentId } from './AgentTab';
+import Animated80MLogo from '../Animated80MLogo';
+import { Plus } from 'lucide-react';
 
 interface Session {
   id: string;
@@ -15,6 +17,14 @@ interface SidebarProps {
   currentSession: string | null;
   activeView: string;
   onViewChange: (view: string) => void;
+}
+
+function timeAgo(ts: number): string {
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -128,7 +138,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // Sessions filtered by selected agent
   const filteredSessions = sessions.filter((s) => {
-    // If session has agent metadata use it, otherwise match by agent prefix in name
     if (s.agent) return s.agent === selectedAgent;
     const nameLower = s.name.toLowerCase();
     return (
@@ -139,8 +148,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div className="sidebar-80m">
+      {/* Brand Header with Animated80MLogo */}
       <div className="sidebar-80m-brand">
-        80<span>M</span>
+        <Animated80MLogo />
       </div>
 
       {/* Agent Tabs */}
@@ -156,24 +166,33 @@ const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
+      {/* Navigation */}
       <div className="sidebar-80m-nav">
         {navItems.map((item) => (
           <button
             key={item.id}
             className={`sidebar-80m-nav-item${activeView === item.id ? ' active' : ''}`}
             onClick={() => onViewChange(item.id)}
-            title={item.label}
           >
             <span className="nav-indicator" />
-            {item.icon}
+            <span className="nav-icon">{item.icon}</span>
             <span className="sidebar-80m-nav-label">{item.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Session list for selected agent */}
+      {/* Sessions List */}
       <div className="sidebar-80m-sessions">
-        <div className="sidebar-80m-sessions-header">Sessions</div>
+        <div className="sidebar-80m-sessions-header">
+          <span>Sessions</span>
+          <button
+            className="sidebar-80m-new-chat"
+            onClick={() => onSelectSession(null)}
+            title="New Chat"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
         <AnimatePresence mode="wait">
           <motion.div
             key={selectedAgent}
@@ -190,7 +209,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onSelectSession(s.id)}
                   title={s.name}
                 >
-                  {s.name}
+                  <span className="session-name">{s.name}</span>
+                  <span className="session-time">{timeAgo(s.updatedAt)}</span>
                 </button>
               ))
             ) : (

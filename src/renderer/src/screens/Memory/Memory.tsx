@@ -196,18 +196,23 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   }
 
   return (
-    <div className="settings-container">
-      <div className="memory-header">
-        <div>
-          <h1 className="settings-header" style={{ marginBottom: 4 }}>
-            {t("memory.title")}
-          </h1>
-          <p className="memory-subtitle">{t("memory.subtitle")}</p>
-        </div>
-        <button className="btn btn-secondary btn-sm" onClick={loadData}>
-          <Refresh size={13} />
-        </button>
+    <div className="main-80m">
+      <div className="screen-header-80m">
+        <span className="screen-header-80m-title">{t("memory.title")}</span>
       </div>
+      <div className="screen-content-80m">
+        <div className="memory-header">
+          <div>
+            <h1 className="settings-header" style={{ marginBottom: 4 }}>
+              {t("memory.title")}
+            </h1>
+            <p className="memory-subtitle">{t("memory.subtitle")}</p>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={loadData}>
+            <Refresh size={13} />
+          </button>
+        </div>
+        </div>
 
       {/* Stats */}
       <div className="memory-stats">

@@ -7,6 +7,8 @@ import Setup from "./screens/Setup/Setup";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
 import { Layout80m } from "./components/80m";
 import { useI18n } from "./components/useI18n";
+import ParticleFieldCanvas from "./components/ParticleFieldCanvas";
+import FilmGrainCanvas from "./components/FilmGrainCanvas";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
@@ -126,6 +128,8 @@ function App(): React.JSX.Element {
       <ErrorBoundary>
         <div className="app">
           {isMac && <div className="drag-region" />}
+          <ParticleFieldCanvas />
+          <FilmGrainCanvas />
           <div className="app-content">{renderScreen()}</div>
         </div>
       </ErrorBoundary>
