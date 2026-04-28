@@ -71,7 +71,6 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        // audio/webm blob available in audioChunksRef.current
         setIsRecording(false);
       };
 
@@ -135,11 +134,27 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
           title="Hold to record (Ctrl+Shift+Space)"
           type="button"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
+          {/* Animated mic SVG with sound wave bars */}
+          <svg
+            viewBox="0 0 36 36"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className={`mic-svg ${isRecording ? 'animate-sound-wave' : ''}`}
+          >
+            {/* Mic body */}
+            <rect x="13" y="4" width="10" height="14" rx="5" fill="currentColor" opacity="0.9" />
+            {/* Mic stand arc */}
+            <path d="M9 14a9 9 0 0 0 18 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+            {/* Stand stem */}
+            <path d="M18 23v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            {/* Base */}
+            <path d="M13 31h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            {/* Left sound wave bars */}
+            <rect x="3" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-left-1" />
+            <rect x="7" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-left-2" />
+            {/* Right sound wave bars */}
+            <rect x="30.5" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-right-1" />
+            <rect x="26.5" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-right-2" />
           </svg>
         </button>
         <button

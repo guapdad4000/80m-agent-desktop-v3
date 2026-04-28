@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import AtmMascot from './AtmMascot';
 
 interface Session {
   id: string;
@@ -113,6 +114,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </div>
       )}
+
+      {/* ATM Mascot at bottom */}
+      <div className="sidebar-80m-mascot">
+        <AtmMascot state="default" />
+      </div>
     </div>
   );
 };

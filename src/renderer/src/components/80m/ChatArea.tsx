@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Messages from './Messages';
 import InputBar from './InputBar';
+import WaveformIndicator from './WaveformIndicator';
+import AtmMascot from './AtmMascot';
 import type { Message } from './Messages';
 
 interface ChatAreaProps {
@@ -141,13 +143,26 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => 
     [sessionId, onNewSession]
   );
 
+  // Determine agent state for mascot
+  const agentState = isLoading ? 'processing' : 'default';
+
   return (
     <div className="main-80m">
       <div className="chat-header-80m">
-        <span className="chat-header-80m-title">80M AGENT</span>
-        <div className="chat-header-80m-status">
-          <span className={`status-dot ${isLoading ? 'processing' : 'idle'}`} />
-          <span>{isLoading ? 'processing' : 'ready'}</span>
+        <div className="chat-header-80m-left">
+          <span className="chat-header-80m-title">80M AGENT</span>
+        </div>
+        <div className="chat-header-80m-center">
+          <div className="chat-header-80m-mascot">
+            <AtmMascot state={agentState} />
+          </div>
+        </div>
+        <div className="chat-header-80m-right">
+          <WaveformIndicator isActive={isLoading} />
+          <div className="chat-header-80m-status">
+            <span className={`status-dot ${isLoading ? 'processing' : 'idle'}`} />
+            <span>{isLoading ? 'processing' : 'ready'}</span>
+          </div>
         </div>
       </div>
       <Messages messages={messages} isLoading={isLoading} />
