@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import AtmMascot from './AtmMascot';
+import { AgentTab, AGENTS, type AgentId } from './AgentTab';
 
 interface Session {
   id: string;
@@ -11,8 +13,8 @@ interface Session {
 interface SidebarProps {
   onSelectSession: (id: string | null) => void;
   currentSession: string | null;
-  activeView: 'chat' | 'settings';
-  onViewChange: (view: 'chat' | 'settings') => void;
+  activeView: string;
+  onViewChange: (view: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -21,11 +23,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   onViewChange,
 }) => {
+  const [selectedAgent, setSelectedAgent] = useState<AgentId>('prawnius');
+  const [isAgentWorking] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
-
-  useEffect(() => {
-    loadSessions();
-  }, []);
 
   const loadSessions = useCallback(async () => {
     if (!window.hermesAPI) return;
@@ -42,6 +42,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     } catch (_) {}
   }, []);
 
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  // Nav items for the 80m app
   const navItems = [
     {
       id: 'chat',
@@ -63,8 +68,55 @@ const Sidebar: React.FC<SidebarProps> = ({
       ),
     },
     {
+      id: 'memory',
+      label: 'Memory',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+          <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'soul',
+      label: 'Soul',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      ),
+    },
+    {
+      id: 'skills',
+      label: 'Skills',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.315 8.685a.98.98 0 0 1 .837-.276c.47.07.802.48.968.925a2.501 2.501 0 1 0 3.214-3.214c-.446-.166-.855-.497-.925-.968a.979.979 0 0 1 .276-.837l1.61-1.61a2.404 2.404 0 0 1 1.705-.707c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'tools',
+      label: 'Tools',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'gateway',
+      label: 'Gateway',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        </svg>
+      ),
+    },
+    {
       id: 'settings',
-      label: 'Config',
+      label: 'Settings',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="3" />
@@ -74,10 +126,34 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
+  // Sessions filtered by selected agent
+  const filteredSessions = sessions.filter((s) => {
+    // If session has agent metadata use it, otherwise match by agent prefix in name
+    if (s.agent) return s.agent === selectedAgent;
+    const nameLower = s.name.toLowerCase();
+    return (
+      nameLower.includes(selectedAgent) ||
+      nameLower.includes(AGENTS.find((a) => a.id === selectedAgent)?.name.toLowerCase() || '')
+    );
+  });
+
   return (
     <div className="sidebar-80m">
       <div className="sidebar-80m-brand">
         80<span>M</span>
+      </div>
+
+      {/* Agent Tabs */}
+      <div className="sidebar-80m-agents">
+        {AGENTS.map((agent) => (
+          <AgentTab
+            key={agent.id}
+            agent={agent}
+            isActive={selectedAgent === agent.id}
+            isWorking={isAgentWorking && selectedAgent === agent.id}
+            onClick={() => setSelectedAgent(agent.id)}
+          />
+        ))}
       </div>
 
       <div className="sidebar-80m-nav">
@@ -85,11 +161,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             key={item.id}
             className={`sidebar-80m-nav-item${activeView === item.id ? ' active' : ''}`}
-            onClick={() => {
-              if (item.id === 'chat' || item.id === 'settings') {
-                onViewChange(item.id as 'chat' | 'settings');
-              }
-            }}
+            onClick={() => onViewChange(item.id)}
             title={item.label}
           >
             <span className="nav-indicator" />
@@ -99,21 +171,34 @@ const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      {/* Session list */}
-      {sessions.length > 0 && (
-        <div className="sidebar-80m-sessions">
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              className={`sidebar-80m-session-item${currentSession === s.id ? ' active' : ''}`}
-              onClick={() => onSelectSession(s.id)}
-              title={s.name}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Session list for selected agent */}
+      <div className="sidebar-80m-sessions">
+        <div className="sidebar-80m-sessions-header">Sessions</div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={selectedAgent}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+          >
+            {filteredSessions.length > 0 ? (
+              filteredSessions.map((s) => (
+                <button
+                  key={s.id}
+                  className={`sidebar-80m-session-item${currentSession === s.id ? ' active' : ''}`}
+                  onClick={() => onSelectSession(s.id)}
+                  title={s.name}
+                >
+                  {s.name}
+                </button>
+              ))
+            ) : (
+              <div className="sidebar-80m-sessions-empty">No sessions</div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
 
       {/* ATM Mascot at bottom */}
       <div className="sidebar-80m-mascot">

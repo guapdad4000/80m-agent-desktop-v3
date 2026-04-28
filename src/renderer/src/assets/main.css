@@ -5565,3 +5565,224 @@ body {
   max-width: 300px;
   line-height: 1.6;
 }
+
+/* Agent Tabs */
+.sidebar-80m-agents {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 6px;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.agent-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  font-family: 'Fira Code', monospace;
+}
+
+.agent-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.agent-tab.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--agent-color, #4ade80);
+}
+
+.agent-tab-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-tab-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-tab-name {
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #666;
+  text-align: center;
+}
+
+.agent-tab.active .agent-tab-name {
+  color: var(--agent-color, #4ade80);
+}
+
+.agent-tab-status {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #333;
+  transition: background 0.2s;
+}
+
+.agent-tab-status.idle {
+  background: #333;
+}
+
+.agent-tab-status.working {
+  background: var(--agent-color, #4ade80);
+  animation: pulse-agent 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-agent {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.sidebar-80m-sessions-header {
+  font-family: 'Fira Code', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #444;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.sidebar-80m-sessions-empty {
+  font-family: 'Fira Code', monospace;
+  font-size: 9px;
+  color: #333;
+  text-align: center;
+  padding: 8px;
+}
+
+/* Command Palette */
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.command-palette {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 16px;
+  border: 2px solid #1a1a1a;
+  background: #0f0f0f;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.command-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.1);
+}
+
+.command-palette-search-icon {
+  width: 16px;
+  height: 16px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.command-palette-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  color: #e8e8e8;
+  caret-color: #4ade80;
+}
+
+.command-palette-input::placeholder {
+  color: #555;
+}
+
+.command-palette-esc {
+  font-family: 'Fira Code', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  background: #1a1a1a;
+  color: #555;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.command-palette-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.command-palette-empty {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: #555;
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.command-palette-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: left;
+}
+
+.command-palette-item:hover {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.15);
+}
+
+.command-palette-item-icon {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.command-palette-item-label {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e8e8e8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.command-palette-item:hover .command-palette-item-label {
+  color: #4ade80;
+}
+
