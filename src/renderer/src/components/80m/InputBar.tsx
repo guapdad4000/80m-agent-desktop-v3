@@ -118,57 +118,57 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
   return (
     <div className="input-80m">
       <div className="input-80m-form">
-        <textarea
-          ref={textareaRef}
-          className="input-80m-textarea"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Send a message..."
-          disabled={disabled}
-          rows={1}
-        />
-        <button
-          className={`input-80m-mic${isRecording ? ' recording' : ''}`}
-          onClick={handleMicClick}
-          title="Hold to record (Ctrl+Shift+Space)"
-          type="button"
+      <textarea
+        ref={textareaRef}
+        className="input-80m-textarea"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Send a message..."
+        disabled={disabled}
+        rows={1}
+      />
+      <button
+        className={`input-80m-mic${isRecording ? ' recording' : ''}`}
+        onClick={handleMicClick}
+        title="Hold to record (Ctrl+Shift+Space)"
+        type="button"
+      >
+        {/* Animated mic SVG with sound wave bars */}
+        <svg
+          viewBox="0 0 36 36"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className={`mic-svg ${isRecording ? 'animate-sound-wave' : ''}`}
         >
-          {/* Animated mic SVG with sound wave bars */}
-          <svg
-            viewBox="0 0 36 36"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className={`mic-svg ${isRecording ? 'animate-sound-wave' : ''}`}
-          >
-            {/* Mic body */}
-            <rect x="13" y="4" width="10" height="14" rx="5" fill="currentColor" opacity="0.9" />
-            {/* Mic stand arc */}
-            <path d="M9 14a9 9 0 0 0 18 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
-            {/* Stand stem */}
-            <path d="M18 23v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            {/* Base */}
-            <path d="M13 31h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            {/* Left sound wave bars */}
-            <rect x="3" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-left-1" />
-            <rect x="7" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-left-2" />
-            {/* Right sound wave bars */}
-            <rect x="30.5" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-right-1" />
-            <rect x="26.5" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-right-2" />
-          </svg>
-        </button>
-        <button
-          className="input-80m-send"
-          onClick={handleSubmit}
-          disabled={disabled || !text.trim()}
-          title="Send (Enter)"
-          type="button"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+          {/* Mic body */}
+          <rect x="13" y="4" width="10" height="14" rx="5" fill="currentColor" opacity="0.9" />
+          {/* Mic stand arc */}
+          <path d="M9 14a9 9 0 0 0 18 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+          {/* Stand stem */}
+          <path d="M18 23v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          {/* Base */}
+          <path d="M13 31h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          {/* Left sound wave bars */}
+          <rect x="3" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-left-1" />
+          <rect x="7" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-left-2" />
+          {/* Right sound wave bars */}
+          <rect x="30.5" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-right-1" />
+          <rect x="26.5" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-right-2" />
+        </svg>
+      </button>
+      <button
+        className="input-80m-send"
+        onClick={handleSubmit}
+        disabled={disabled || !text.trim()}
+        title="Send (Enter)"
+        type="button"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <line x1="22" y1="2" x2="11" y2="13" />
+          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </svg>
+      </button>
       </div>
     </div>
   );

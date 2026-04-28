@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import AtmMascot from './AtmMascot';
-import { AgentTab, AGENTS, type AgentId } from './AgentTab';
 import Animated80MLogo from '../Animated80MLogo';
 import { Plus } from 'lucide-react';
 
@@ -33,8 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   onViewChange,
 }) => {
-  const [selectedAgent, setSelectedAgent] = useState<AgentId>('prawnius');
-  const [isAgentWorking] = useState(false);
+  const [selectedAgent] = useState<string>('prawnius');
   const [sessions, setSessions] = useState<Session[]>([]);
 
   const loadSessions = useCallback(async () => {
@@ -140,35 +138,22 @@ const Sidebar: React.FC<SidebarProps> = ({
   const filteredSessions = sessions.filter((s) => {
     if (s.agent) return s.agent === selectedAgent;
     const nameLower = s.name.toLowerCase();
-    return (
-      nameLower.includes(selectedAgent) ||
-      nameLower.includes(AGENTS.find((a) => a.id === selectedAgent)?.name.toLowerCase() || '')
-    );
+    return nameLower.includes(selectedAgent);
   });
 
   return (
     <div className="sidebar-80m">
-      {/* Brand Header with Animated80MLogo */}
+      {/* Brand Header with logo + ATM mascot */}
       <div className="sidebar-80m-brand">
-        <img 
-          src="https://i.postimg.cc/d18ByxQX/Beige-ATM-with-transparent-screen.png" 
-          alt="80M ATM Mascot" 
-          style={{ height: 48, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }} 
+        <div className="sidebar-80m-brand-row">
+          <span className="sidebar-80m-ready-dot" />
+          <Animated80MLogo />
+        </div>
+        <img
+          src="https://i.postimg.cc/d18ByxQX/Beige-ATM-with-transparent-screen.png"
+          alt="80M ATM Mascot"
+          className="sidebar-80m-atm"
         />
-        <Animated80MLogo />
-      </div>
-
-      {/* Agent Tabs */}
-      <div className="sidebar-80m-agents">
-        {AGENTS.map((agent) => (
-          <AgentTab
-            key={agent.id}
-            agent={agent}
-            isActive={selectedAgent === agent.id}
-            isWorking={isAgentWorking && selectedAgent === agent.id}
-            onClick={() => setSelectedAgent(agent.id)}
-          />
-        ))}
       </div>
 
       {/* Navigation */}
