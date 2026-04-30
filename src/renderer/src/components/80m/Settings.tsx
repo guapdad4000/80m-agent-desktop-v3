@@ -1014,7 +1014,7 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
                   onClick={handleImport}
                   disabled={importing}
                   className="settings-80m-save-btn"
-                  style={{ background: "#3b82f6" }}
+                  style={{ background: "#4ade80" }}
                 >
                   {importing ? (
                     "IMPORTING..."

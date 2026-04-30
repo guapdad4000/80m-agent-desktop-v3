@@ -17,7 +17,7 @@ const BackgroundLayers: React.FC = () => {
         }}
       />
 
-      {/* Layer 2: Blurred blue gradient blobs — these turn green with mix-blend-multiply over cream */}
+      {/* Layer 2: Soft green-beige gradient blobs — these turn green with mix-blend-multiply over cream */}
       <div
         style={{
           position: "absolute",
@@ -35,7 +35,7 @@ const BackgroundLayers: React.FC = () => {
             left: "-5%",
             width: "60vw",
             height: "60vw",
-            background: "#38bdf8",
+            background: "#4ade80",
             borderRadius: "9999px",
             filter: "blur(140px)",
             opacity: 0.25,
@@ -48,7 +48,7 @@ const BackgroundLayers: React.FC = () => {
             right: "-10%",
             width: "70vw",
             height: "70vw",
-            background: "#0ea5e9",
+            background: "#f5e6c8",
             borderRadius: "9999px",
             filter: "blur(160px)",
             opacity: 0.2,

@@ -22,7 +22,7 @@ const AGENTS: AgentConfig[] = [
   {
     id: "claudnelius",
     name: "Claudnelius",
-    color: "#3b82f6",
+    color: "#4ade80",
     icon: "PenTool",
     role: "Code & Design",
   },

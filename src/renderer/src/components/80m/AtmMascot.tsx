@@ -41,7 +41,7 @@ const AtmMascot: React.FC<AtmMascotProps> = ({
         .anim-lobster .pincer-move { animation: claw-snap 0.2s infinite; }
         .anim-urgent .atm-character { animation: shake-anim 0.1s infinite; }
         .anim-processing .eye-anim { animation: look-around 2s ease-in-out infinite; }
-        .anim-processing .top-light-glow, .anim-processing .top-light-glow rect { fill: #3b82f6; filter: drop-shadow(0 0 10px #3b82f6); animation: flash-gold 0.4s infinite alternate; }
+        .anim-processing .top-light-glow, .anim-processing .top-light-glow rect { fill: #4ade80; filter: drop-shadow(0 0 10px #4ade80); animation: flash-gold 0.4s infinite alternate; }
       `}</style>
 
       <div className={isIntro ? "mascot-intro-wrapper" : "w-full"}>

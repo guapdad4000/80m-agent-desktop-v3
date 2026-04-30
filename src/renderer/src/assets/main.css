@@ -1879,7 +1879,7 @@ body {
   font-size: 20px;
   font-weight: 700;
   margin-bottom: 24px;
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .settings-section {
@@ -2390,7 +2390,7 @@ body {
 .agents-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .agents-subtitle {
@@ -2858,7 +2858,7 @@ body {
 .skills-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .skills-subtitle {
@@ -3225,7 +3225,7 @@ body {
 .schedules-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .schedules-subtitle {
@@ -4040,7 +4040,7 @@ body {
 .tools-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .tools-subtitle {
@@ -5107,8 +5107,8 @@ body {
 }
 
 .theme-knowledge-knaight {
-  --agent-accent: #38bdf8; /* ice blue */
-  --agent-accent-glow: rgba(56, 189, 248, 0.4);
+  --agent-accent: #4ade80; /* 80m green */
+  --agent-accent-glow: rgba(74, 222, 128, 0.4);
 }
 
 .theme-clawdette {
@@ -7004,8 +7004,8 @@ body {
   color: #fbbf24;
 }
 .badge-80m.blue {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
 }
 
 /* === 80M SECTION LABEL === */
