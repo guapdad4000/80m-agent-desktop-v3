@@ -7,15 +7,27 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::{BufRead, BufReader};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 const LOCAL_API_URL: &str = "http://127.0.0.1:8642";
 static GATEWAY_PROCESS: Lazy<Mutex<Option<Child>>> = Lazy::new(|| Mutex::new(None));
+static CLAW3D_DEV_PROCESS: Lazy<Mutex<Option<Child>>> = Lazy::new(|| Mutex::new(None));
+static CLAW3D_ADAPTER_PROCESS: Lazy<Mutex<Option<Child>>> = Lazy::new(|| Mutex::new(None));
+static CLAW3D_DEV_LOGS: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+static CLAW3D_ADAPTER_LOGS: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+static CLAW3D_DEV_ERROR: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+static CLAW3D_ADAPTER_ERROR: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+const HERMES_OFFICE_REPO: &str = "https://github.com/fathah/hermes-office";
+const DEFAULT_CLAW3D_PORT: i64 = 3000;
+const DEFAULT_CLAW3D_WS_URL: &str = "ws://localhost:18789";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -554,6 +566,338 @@ fn strip_ansi(text: &str) -> String {
         return text.to_string();
     };
     re.replace_all(text, "").to_string()
+}
+
+fn hermes_office_dir() -> PathBuf {
+    hermes_home().join("hermes-office")
+}
+
+fn claw3d_dev_pid_file() -> PathBuf {
+    hermes_home().join("claw3d-dev.pid")
+}
+
+fn claw3d_adapter_pid_file() -> PathBuf {
+    hermes_home().join("claw3d-adapter.pid")
+}
+
+fn claw3d_port_file() -> PathBuf {
+    hermes_home().join("claw3d-port")
+}
+
+fn claw3d_ws_url_file() -> PathBuf {
+    hermes_home().join("claw3d-ws-url")
+}
+
+fn claw3d_settings_dir() -> PathBuf {
+    home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openclaw")
+        .join("claw3d")
+}
+
+fn read_pid(path: PathBuf) -> Option<u32> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|content| content.trim().parse::<u32>().ok())
+}
+
+fn write_pid(path: PathBuf, pid: u32) {
+    let _ = safe_write(path, pid.to_string());
+}
+
+fn cleanup_pid(path: PathBuf) {
+    let _ = fs::remove_file(path);
+}
+
+fn saved_claw3d_port() -> i64 {
+    fs::read_to_string(claw3d_port_file())
+        .ok()
+        .and_then(|content| content.trim().parse::<i64>().ok())
+        .filter(|port| *port > 0)
+        .unwrap_or(DEFAULT_CLAW3D_PORT)
+}
+
+fn saved_claw3d_ws_url() -> String {
+    fs::read_to_string(claw3d_ws_url_file())
+        .ok()
+        .map(|content| content.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| DEFAULT_CLAW3D_WS_URL.to_string())
+}
+
+fn write_claw3d_settings(ws_url: Option<String>) {
+    let url = ws_url.unwrap_or_else(saved_claw3d_ws_url);
+
+    let settings_dir = claw3d_settings_dir();
+    let settings_path = settings_dir.join("settings.json");
+    let mut settings = fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    settings.insert("adapter".to_string(), Value::String("hermes".to_string()));
+    settings.insert("url".to_string(), Value::String(url.clone()));
+    settings.insert("token".to_string(), Value::String(String::new()));
+    let _ = safe_write(
+        settings_path,
+        serde_json::to_string_pretty(&Value::Object(settings)).unwrap_or_default(),
+    );
+
+    let office_dir = hermes_office_dir();
+    if office_dir.exists() {
+        let env_content = [
+            "# Auto-configured by Hermes Desktop".to_string(),
+            format!("PORT={}", saved_claw3d_port()),
+            "HOST=127.0.0.1".to_string(),
+            format!("NEXT_PUBLIC_GATEWAY_URL={url}"),
+            format!("CLAW3D_GATEWAY_URL={url}"),
+            "CLAW3D_GATEWAY_TOKEN=".to_string(),
+            "HERMES_ADAPTER_PORT=18789".to_string(),
+            "HERMES_MODEL=hermes".to_string(),
+            "HERMES_AGENT_NAME=Hermes".to_string(),
+            String::new(),
+        ]
+        .join("\n");
+        let _ = safe_write(office_dir.join(".env"), env_content);
+    }
+}
+
+fn claw3d_port_in_use(port: i64) -> bool {
+    let Ok(port) = u16::try_from(port) else {
+        return false;
+    };
+    let Ok(addr) = format!("127.0.0.1:{port}").parse() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+}
+
+fn child_running(slot: &Lazy<Mutex<Option<Child>>>) -> bool {
+    if let Ok(mut guard) = slot.lock() {
+        if let Some(child) = guard.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    *guard = None;
+                }
+                Ok(None) => return true,
+                Err(_) => {
+                    *guard = None;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn claw3d_dev_running() -> bool {
+    if child_running(&CLAW3D_DEV_PROCESS) {
+        return true;
+    }
+    let pid_file = claw3d_dev_pid_file();
+    if read_pid(pid_file.clone())
+        .map(process_is_alive)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    cleanup_pid(pid_file);
+    false
+}
+
+fn claw3d_adapter_running() -> bool {
+    if child_running(&CLAW3D_ADAPTER_PROCESS) {
+        return true;
+    }
+    let pid_file = claw3d_adapter_pid_file();
+    if read_pid(pid_file.clone())
+        .map(process_is_alive)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    cleanup_pid(pid_file);
+    false
+}
+
+fn find_npm() -> String {
+    let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let mut candidates = vec![
+        home.join(".volta").join("bin").join("npm"),
+        home.join(".asdf").join("shims").join("npm"),
+        home.join(".local")
+            .join("share")
+            .join("fnm")
+            .join("aliases")
+            .join("default")
+            .join("bin")
+            .join("npm"),
+        home.join(".fnm")
+            .join("aliases")
+            .join("default")
+            .join("bin")
+            .join("npm"),
+        PathBuf::from("/usr/local/bin/npm"),
+        PathBuf::from("/opt/homebrew/bin/npm"),
+        PathBuf::from("/usr/bin/npm"),
+    ];
+
+    let nvm_versions = env::var("NVM_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home.join(".nvm"))
+        .join("versions")
+        .join("node");
+    if let Ok(entries) = fs::read_dir(nvm_versions) {
+        let mut versions = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.starts_with('v'))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        versions.sort();
+        versions.reverse();
+        candidates.splice(
+            0..0,
+            versions
+                .into_iter()
+                .map(|path| path.join("bin").join("npm")),
+        );
+    }
+
+    candidates
+        .into_iter()
+        .find(|path| path.exists())
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| "npm".to_string())
+}
+
+fn append_limited(target: &Lazy<Mutex<String>>, chunk: &str) {
+    if let Ok(mut logs) = target.lock() {
+        logs.push_str(chunk);
+        if logs.len() > 2000 {
+            let keep_from = logs.len().saturating_sub(2000);
+            *logs = logs[keep_from..].to_string();
+        }
+    }
+}
+
+fn set_error(target: &Lazy<Mutex<String>>, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if regex::Regex::new("(?i)error|EADDRINUSE|ENOENT|failed|fatal")
+        .map(|re| re.is_match(text))
+        .unwrap_or(false)
+        && !regex::Regex::new("(?i)warning")
+            .map(|re| re.is_match(text))
+            .unwrap_or(false)
+    {
+        if let Ok(mut error) = target.lock() {
+            *error = text.trim().chars().take(300).collect();
+        }
+    }
+}
+
+fn clear_logs(logs: &Lazy<Mutex<String>>, error: &Lazy<Mutex<String>>) {
+    if let Ok(mut logs) = logs.lock() {
+        logs.clear();
+    }
+    if let Ok(mut error) = error.lock() {
+        error.clear();
+    }
+}
+
+fn spawn_log_reader<R>(
+    reader: R,
+    logs: &'static Lazy<Mutex<String>>,
+    error: &'static Lazy<Mutex<String>>,
+) where
+    R: std::io::Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let reader = BufReader::new(reader);
+        for line in reader.lines().map_while(Result::ok) {
+            let text = strip_ansi(&(line + "\n"));
+            append_limited(logs, &text);
+            set_error(error, &text);
+        }
+    });
+}
+
+fn stop_pid(pid_file: PathBuf) {
+    if let Some(pid) = read_pid(pid_file.clone()) {
+        let pid_text = pid.to_string();
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(format!("-{pid}"))
+            .status();
+        let _ = Command::new("kill").arg("-TERM").arg(pid_text).status();
+    }
+    cleanup_pid(pid_file);
+}
+
+fn start_claw3d_process(
+    args: &[&str],
+    slot: &'static Lazy<Mutex<Option<Child>>>,
+    logs: &'static Lazy<Mutex<String>>,
+    error: &'static Lazy<Mutex<String>>,
+    pid_file: PathBuf,
+    extra_env: &[(&str, String)],
+) -> bool {
+    let office_dir = hermes_office_dir();
+    if !office_dir.join("node_modules").exists() {
+        return false;
+    }
+    if child_running(slot)
+        || read_pid(pid_file.clone())
+            .map(process_is_alive)
+            .unwrap_or(false)
+    {
+        return true;
+    }
+
+    clear_logs(logs, error);
+    let mut command = Command::new(find_npm());
+    command
+        .args(args)
+        .current_dir(office_dir)
+        .env("PATH", enhanced_path())
+        .env(
+            "HOME",
+            home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .to_string_lossy()
+                .to_string(),
+        )
+        .env("TERM", "dumb")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+
+    let Ok(mut child) = command.spawn() else {
+        if let Ok(mut err) = error.lock() {
+            *err = "Failed to start Claw3D process".to_string();
+        }
+        return false;
+    };
+
+    if let Some(stdout) = child.stdout.take() {
+        spawn_log_reader(stdout, logs, error);
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_log_reader(stderr, logs, error);
+    }
+    write_pid(pid_file, child.id());
+    if let Ok(mut guard) = slot.lock() {
+        *guard = Some(child);
+    }
+    true
 }
 
 const TOOLSET_DEFS: &[(&str, &str, &str)] = &[
@@ -2465,80 +2809,302 @@ fn trigger_cron_job(_job_id: String, _profile: Option<String>) -> ActionResult {
 
 #[tauri::command]
 fn claw3d_status() -> Claw3dStatus {
+    let office_dir = hermes_office_dir();
+    let cloned = office_dir.join("package.json").exists();
+    let installed = office_dir.join("node_modules").exists();
+    let port = saved_claw3d_port();
+    let dev_server_running = claw3d_dev_running();
+    let adapter_running = claw3d_adapter_running();
+    let dev_error = CLAW3D_DEV_ERROR
+        .lock()
+        .map(|error| error.clone())
+        .unwrap_or_default();
+    let adapter_error = CLAW3D_ADAPTER_ERROR
+        .lock()
+        .map(|error| error.clone())
+        .unwrap_or_default();
     Claw3dStatus {
-        cloned: false,
-        installed: false,
-        dev_server_running: false,
-        adapter_running: false,
-        port: 5174,
-        port_in_use: false,
-        ws_url: String::new(),
-        running: false,
-        error: "Claw3D has not been ported to Tauri yet.".to_string(),
+        cloned,
+        installed,
+        dev_server_running,
+        adapter_running,
+        port,
+        port_in_use: !dev_server_running && claw3d_port_in_use(port),
+        ws_url: saved_claw3d_ws_url(),
+        running: dev_server_running && adapter_running,
+        error: if dev_error.is_empty() {
+            adapter_error
+        } else {
+            dev_error
+        },
     }
 }
 
 #[tauri::command]
-fn claw3d_setup() -> ActionResult {
-    ActionResult {
-        success: false,
-        error: Some("Claw3D has not been ported to Tauri yet.".to_string()),
+fn claw3d_setup(app: AppHandle) -> ActionResult {
+    let office_dir = hermes_office_dir();
+    let total_steps = 2;
+    let mut log = String::new();
+    let emit = |app: &AppHandle, step: i64, title: &str, detail: &str, log: &mut String| {
+        log.push_str(detail);
+        let _ = app.emit(
+            "claw3d-setup-progress",
+            serde_json::json!({
+                "step": step,
+                "totalSteps": total_steps,
+                "title": title,
+                "detail": detail.trim().chars().take(120).collect::<String>(),
+                "log": log,
+            }),
+        );
+    };
+
+    if !office_dir.join("package.json").exists() {
+        emit(
+            &app,
+            1,
+            "Cloning Claw3D repository...",
+            "Cloning from GitHub...\n",
+            &mut log,
+        );
+        let output = Command::new("git")
+            .args(["clone", HERMES_OFFICE_REPO, &office_dir.to_string_lossy()])
+            .current_dir(home_dir().unwrap_or_else(|| PathBuf::from(".")))
+            .env("PATH", enhanced_path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
+        match output {
+            Ok(output) if output.status.success() => {
+                emit(
+                    &app,
+                    1,
+                    "Cloning Claw3D repository...",
+                    "Clone complete.\n",
+                    &mut log,
+                );
+            }
+            Ok(output) => {
+                return ActionResult {
+                    success: false,
+                    error: Some(strip_ansi(&String::from_utf8_lossy(&output.stderr))),
+                };
+            }
+            Err(error) => {
+                return ActionResult {
+                    success: false,
+                    error: Some(format!("Failed to run git: {error}")),
+                };
+            }
+        }
+    } else {
+        emit(
+            &app,
+            1,
+            "Claw3D already cloned",
+            "Repository already exists, pulling latest...\n",
+            &mut log,
+        );
+        let _ = Command::new("git")
+            .args(["pull", "--ff-only"])
+            .current_dir(&office_dir)
+            .env("PATH", enhanced_path())
+            .output();
+    }
+
+    emit(
+        &app,
+        2,
+        "Installing dependencies...",
+        "Running npm install...\n",
+        &mut log,
+    );
+    let output = Command::new(find_npm())
+        .arg("install")
+        .current_dir(&office_dir)
+        .env("PATH", enhanced_path())
+        .env(
+            "HOME",
+            home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .to_string_lossy()
+                .to_string(),
+        )
+        .env("TERM", "dumb")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            write_claw3d_settings(None);
+            emit(
+                &app,
+                2,
+                "Installing dependencies...",
+                "Dependencies installed successfully.\n",
+                &mut log,
+            );
+            ActionResult {
+                success: true,
+                error: None,
+            }
+        }
+        Ok(output) => ActionResult {
+            success: false,
+            error: Some(strip_ansi(&String::from_utf8_lossy(&output.stderr))),
+        },
+        Err(error) => ActionResult {
+            success: false,
+            error: Some(format!("Failed to run npm: {error}")),
+        },
     }
 }
 
 #[tauri::command]
 fn claw3d_get_port() -> i64 {
-    5174
+    saved_claw3d_port()
 }
 
 #[tauri::command]
-fn claw3d_set_port(_port: i64) -> bool {
-    false
+fn claw3d_set_port(port: i64) -> bool {
+    if port <= 0 {
+        return false;
+    }
+    if safe_write(claw3d_port_file(), port.to_string()).is_ok() {
+        write_claw3d_settings(None);
+        true
+    } else {
+        false
+    }
 }
 
 #[tauri::command]
 fn claw3d_get_ws_url() -> String {
-    String::new()
+    saved_claw3d_ws_url()
 }
 
 #[tauri::command]
-fn claw3d_set_ws_url(_url: String) -> bool {
-    false
+fn claw3d_set_ws_url(url: String) -> bool {
+    if url.trim().is_empty() {
+        return false;
+    }
+    if safe_write(claw3d_ws_url_file(), url.trim().to_string()).is_ok() {
+        write_claw3d_settings(Some(url.trim().to_string()));
+        true
+    } else {
+        false
+    }
 }
 
 #[tauri::command]
 fn claw3d_start_all() -> ActionResult {
-    claw3d_setup()
+    if !hermes_office_dir().join("node_modules").exists() {
+        return ActionResult {
+            success: false,
+            error: Some("Claw3D is not installed. Please install it first.".to_string()),
+        };
+    }
+    if !claw3d_start_dev() {
+        return ActionResult {
+            success: false,
+            error: Some(format!(
+                "Failed to start dev server on port {}",
+                saved_claw3d_port()
+            )),
+        };
+    }
+    if !claw3d_start_adapter() {
+        return ActionResult {
+            success: false,
+            error: Some("Failed to start Hermes adapter".to_string()),
+        };
+    }
+    ActionResult {
+        success: true,
+        error: None,
+    }
 }
 
 #[tauri::command]
 fn claw3d_stop_all() -> bool {
-    false
+    let _ = claw3d_stop_dev();
+    let _ = claw3d_stop_adapter();
+    if let Ok(mut error) = CLAW3D_DEV_ERROR.lock() {
+        error.clear();
+    }
+    if let Ok(mut error) = CLAW3D_ADAPTER_ERROR.lock() {
+        error.clear();
+    }
+    true
 }
 
 #[tauri::command]
 fn claw3d_get_logs() -> String {
-    String::new()
+    let dev_logs = CLAW3D_DEV_LOGS
+        .lock()
+        .map(|logs| logs.clone())
+        .unwrap_or_default();
+    let adapter_logs = CLAW3D_ADAPTER_LOGS
+        .lock()
+        .map(|logs| logs.clone())
+        .unwrap_or_default();
+    [
+        (!dev_logs.is_empty()).then(|| format!("=== Dev Server ===\n{dev_logs}")),
+        (!adapter_logs.is_empty()).then(|| format!("=== Adapter ===\n{adapter_logs}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n\n")
 }
 
 #[tauri::command]
 fn claw3d_start_dev() -> bool {
-    false
+    write_claw3d_settings(None);
+    start_claw3d_process(
+        &["run", "dev"],
+        &CLAW3D_DEV_PROCESS,
+        &CLAW3D_DEV_LOGS,
+        &CLAW3D_DEV_ERROR,
+        claw3d_dev_pid_file(),
+        &[("PORT", saved_claw3d_port().to_string())],
+    )
 }
 
 #[tauri::command]
 fn claw3d_stop_dev() -> bool {
-    false
+    if let Ok(mut guard) = CLAW3D_DEV_PROCESS.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    stop_pid(claw3d_dev_pid_file());
+    true
 }
 
 #[tauri::command]
 fn claw3d_start_adapter() -> bool {
-    false
+    start_claw3d_process(
+        &["run", "hermes-adapter"],
+        &CLAW3D_ADAPTER_PROCESS,
+        &CLAW3D_ADAPTER_LOGS,
+        &CLAW3D_ADAPTER_ERROR,
+        claw3d_adapter_pid_file(),
+        &[],
+    )
 }
 
 #[tauri::command]
 fn claw3d_stop_adapter() -> bool {
-    false
+    if let Ok(mut guard) = CLAW3D_ADAPTER_PROCESS.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    stop_pid(claw3d_adapter_pid_file());
+    true
 }
 
 #[tauri::command]

@@ -15,11 +15,12 @@ Current foundation:
 - The renderer bridge currently has Tauri command coverage for every known
   `window.hermesAPI` call. Core chat, gateway, config, sessions, models, tools,
   skills, app data, profiles, memory, soul, credentials, logs, project files,
-  and Hermes maintenance commands have native Rust implementations.
+  Hermes maintenance commands, and Claw3D runtime controls have native Rust
+  implementations.
 - Specialty surfaces that still need full parity are intentionally conservative:
-  updater, cron jobs, Claw3D/OpenClaw, MCP discovery, memory-provider discovery,
-  and embedded browser commands return safe fallback/stub responses instead of
-  failing the renderer invoke path.
+  updater, cron jobs, OpenClaw migration, MCP discovery, memory-provider
+  discovery, and embedded browser commands return safe fallback/stub responses
+  instead of failing the renderer invoke path.
 
 Current build status:
 - Rust 1.95.0 and the Linux WebKitGTK prerequisites have been installed on this
