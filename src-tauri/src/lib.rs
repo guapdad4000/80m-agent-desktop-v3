@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use rusqlite::Connection;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -52,6 +53,94 @@ struct ChatMessage {
 struct ChatResponse {
     response: String,
     session_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ToolsetInfo {
+    key: String,
+    label: String,
+    description: String,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct InstalledSkill {
+    name: String,
+    category: String,
+    description: String,
+    path: String,
+}
+
+#[derive(Serialize)]
+struct SkillSearchResult {
+    name: String,
+    description: String,
+    category: String,
+    source: String,
+    installed: bool,
+}
+
+#[derive(Serialize)]
+struct ActionResult {
+    success: bool,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionSummary {
+    id: String,
+    source: String,
+    started_at: f64,
+    ended_at: Option<f64>,
+    message_count: i64,
+    model: String,
+    title: Option<String>,
+    preview: String,
+}
+
+#[derive(Serialize)]
+struct SessionMessage {
+    id: i64,
+    role: String,
+    content: String,
+    timestamp: f64,
+    tool_calls: Option<String>,
+    tool_name: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchResult {
+    session_id: String,
+    title: Option<String>,
+    started_at: f64,
+    source: String,
+    message_count: i64,
+    model: String,
+    snippet: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedModel {
+    id: String,
+    name: String,
+    provider: String,
+    model: String,
+    base_url: String,
+    created_at: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogModel {
+    provider: String,
+    model: String,
+    name: String,
+    description: String,
+    base_url: String,
+    source: String,
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -405,12 +494,356 @@ fn strip_ansi(text: &str) -> String {
     re.replace_all(text, "").to_string()
 }
 
+const TOOLSET_DEFS: &[(&str, &str, &str)] = &[
+    (
+        "web",
+        "Web Search",
+        "Search the web and extract content from URLs",
+    ),
+    (
+        "browser",
+        "Browser",
+        "Navigate, click, type, and interact with web pages",
+    ),
+    ("terminal", "Terminal", "Execute shell commands and scripts"),
+    (
+        "file",
+        "File Operations",
+        "Read, write, search, and manage files",
+    ),
+    (
+        "code_execution",
+        "Code Execution",
+        "Execute Python and shell code directly",
+    ),
+    ("vision", "Vision", "Analyze images and visual content"),
+    (
+        "image_gen",
+        "Image Generation",
+        "Generate images with DALL-E and other models",
+    ),
+    ("tts", "Text-to-Speech", "Convert text to spoken audio"),
+    (
+        "skills",
+        "Skills",
+        "Create, manage, and execute reusable skills",
+    ),
+    ("memory", "Memory", "Store and recall persistent knowledge"),
+    (
+        "session_search",
+        "Session Search",
+        "Search across past conversations",
+    ),
+    (
+        "clarify",
+        "Clarifying Questions",
+        "Ask the user for clarification when needed",
+    ),
+    (
+        "delegation",
+        "Delegation",
+        "Spawn sub-agents for parallel tasks",
+    ),
+    ("cronjob", "Cron Jobs", "Create and manage scheduled tasks"),
+    (
+        "moa",
+        "Mixture of Agents",
+        "Coordinate multiple AI models together",
+    ),
+    (
+        "todo",
+        "Task Planning",
+        "Create and manage to-do lists for complex tasks",
+    ),
+];
+
+fn parse_enabled_toolsets(content: &str) -> std::collections::HashSet<String> {
+    let mut enabled = std::collections::HashSet::new();
+    let mut in_platform_toolsets = false;
+    let mut in_cli = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim_end();
+        if regex::Regex::new(r"^\s*platform_toolsets\s*:")
+            .unwrap()
+            .is_match(trimmed)
+        {
+            in_platform_toolsets = true;
+            in_cli = false;
+            continue;
+        }
+        if in_platform_toolsets && regex::Regex::new(r"^\s+cli\s*:").unwrap().is_match(trimmed) {
+            in_cli = true;
+            continue;
+        }
+        if in_platform_toolsets && !trimmed.is_empty() && !trimmed.starts_with(char::is_whitespace)
+        {
+            in_platform_toolsets = false;
+            in_cli = false;
+            continue;
+        }
+        if in_cli {
+            if let Some(captures) = regex::Regex::new(r#"^\s+-\s+["']?(\w+)["']?"#)
+                .unwrap()
+                .captures(trimmed)
+            {
+                if let Some(value) = captures.get(1) {
+                    enabled.insert(value.as_str().to_string());
+                }
+            }
+        }
+    }
+    enabled
+}
+
+fn localize_tools(enabled: &dyn Fn(&str) -> bool) -> Vec<ToolsetInfo> {
+    TOOLSET_DEFS
+        .iter()
+        .map(|(key, label, description)| ToolsetInfo {
+            key: (*key).to_string(),
+            label: (*label).to_string(),
+            description: (*description).to_string(),
+            enabled: enabled(key),
+        })
+        .collect()
+}
+
+fn parse_skill_frontmatter(content: &str, fallback: &str) -> (String, String) {
+    if content.starts_with("---") {
+        if let Some(end_idx) = content[3..].find("---").map(|idx| idx + 3) {
+            let frontmatter = &content[3..end_idx];
+            let name = regex::Regex::new(r#"(?m)^\s*name:\s*["']?([^"'\n]+)["']?\s*$"#)
+                .ok()
+                .and_then(|re| re.captures(frontmatter))
+                .and_then(|captures| captures.get(1))
+                .map(|value| value.as_str().trim().to_string())
+                .unwrap_or_else(|| fallback.to_string());
+            let description =
+                regex::Regex::new(r#"(?m)^\s*description:\s*["']?([^"'\n]+)["']?\s*$"#)
+                    .ok()
+                    .and_then(|re| re.captures(frontmatter))
+                    .and_then(|captures| captures.get(1))
+                    .map(|value| value.as_str().trim().to_string())
+                    .unwrap_or_default();
+            return (name, description);
+        }
+    }
+
+    let name = regex::Regex::new(r"(?m)^#\s+(.+)")
+        .ok()
+        .and_then(|re| re.captures(content))
+        .and_then(|captures| captures.get(1))
+        .map(|value| value.as_str().trim().to_string())
+        .unwrap_or_else(|| fallback.to_string());
+    (name, String::new())
+}
+
+fn list_skill_dir(base_dir: PathBuf, bundled: bool) -> Vec<SkillSearchResult> {
+    let mut skills = Vec::new();
+    let Ok(categories) = fs::read_dir(base_dir) else {
+        return skills;
+    };
+    for category in categories.flatten() {
+        let category_path = category.path();
+        if !category_path.is_dir() {
+            continue;
+        }
+        let category_name = category.file_name().to_string_lossy().to_string();
+        let Ok(entries) = fs::read_dir(category_path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if !entry_path.is_dir() {
+                continue;
+            }
+            let skill_file = entry_path.join("SKILL.md");
+            if !skill_file.exists() {
+                continue;
+            }
+            let fallback = entry.file_name().to_string_lossy().to_string();
+            let content = fs::read_to_string(skill_file).unwrap_or_default();
+            let preview = content.chars().take(4000).collect::<String>();
+            let (name, description) = parse_skill_frontmatter(&preview, &fallback);
+            skills.push(SkillSearchResult {
+                name,
+                description,
+                category: category_name.clone(),
+                source: if bundled { "bundled" } else { "installed" }.to_string(),
+                installed: !bundled,
+            });
+        }
+    }
+    skills.sort_by(|a, b| a.category.cmp(&b.category).then(a.name.cmp(&b.name)));
+    skills
+}
+
+fn list_installed_skill_dir(base_dir: PathBuf) -> Vec<InstalledSkill> {
+    let mut skills = Vec::new();
+    let Ok(categories) = fs::read_dir(base_dir) else {
+        return skills;
+    };
+    for category in categories.flatten() {
+        let category_path = category.path();
+        if !category_path.is_dir() {
+            continue;
+        }
+        let category_name = category.file_name().to_string_lossy().to_string();
+        let Ok(entries) = fs::read_dir(category_path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if !entry_path.is_dir() {
+                continue;
+            }
+            let skill_file = entry_path.join("SKILL.md");
+            if !skill_file.exists() {
+                continue;
+            }
+            let fallback = entry.file_name().to_string_lossy().to_string();
+            let content = fs::read_to_string(skill_file).unwrap_or_default();
+            let preview = content.chars().take(4000).collect::<String>();
+            let (name, description) = parse_skill_frontmatter(&preview, &fallback);
+            skills.push(InstalledSkill {
+                name,
+                category: category_name.clone(),
+                description,
+                path: entry_path.to_string_lossy().to_string(),
+            });
+        }
+    }
+    skills.sort_by(|a, b| a.category.cmp(&b.category).then(a.name.cmp(&b.name)));
+    skills
+}
+
 fn emit_chat_error(app: &AppHandle, error: &str) {
     let _ = app.emit("chat-error", error);
 }
 
 fn emit_chat_done(app: &AppHandle, session_id: Option<&str>) {
     let _ = app.emit("chat-done", session_id.unwrap_or(""));
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn default_models() -> Vec<SavedModel> {
+    [
+        ("MiniMax M2.7", "nous", "minimax/minimax-m2.7", ""),
+        ("OpenAI GPT-5.5", "nous", "openai/gpt-5.5", ""),
+        ("xAI Grok 4.20 Beta", "nous", "x-ai/grok-4.20-beta", ""),
+        ("Qwen3.5 Plus", "nous", "qwen/qwen3.5-plus-02-15", ""),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (name, provider, model, base_url))| SavedModel {
+        id: format!("default-{index}-{model}"),
+        name: name.to_string(),
+        provider: provider.to_string(),
+        model: model.to_string(),
+        base_url: base_url.to_string(),
+        created_at: now_ms(),
+    })
+    .collect()
+}
+
+fn models_file() -> PathBuf {
+    hermes_home().join("models.json")
+}
+
+fn read_models_file() -> Vec<SavedModel> {
+    let Ok(content) = fs::read_to_string(models_file()) else {
+        return Vec::new();
+    };
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
+fn write_models_file(models: &[SavedModel]) -> Result<(), String> {
+    let content = serde_json::to_string_pretty(models).map_err(|error| error.to_string())?;
+    safe_write(models_file(), content)
+}
+
+fn model_name_from_id(id: &str) -> String {
+    id.split('/')
+        .next_back()
+        .unwrap_or(id)
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn fallback_catalog() -> Vec<CatalogModel> {
+    default_models()
+        .into_iter()
+        .map(|model| CatalogModel {
+            provider: model.provider,
+            model: model.model,
+            name: model.name,
+            description: "fallback".to_string(),
+            base_url: model.base_url,
+            source: "fallback".to_string(),
+        })
+        .collect()
+}
+
+fn parse_catalog(raw: &Value) -> Vec<CatalogModel> {
+    if raw.get("version").and_then(Value::as_i64) != Some(1) {
+        return Vec::new();
+    }
+    let Some(providers) = raw.get("providers").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let mut models = Vec::new();
+    for (provider, catalog) in providers {
+        let Some(entries) = catalog.get("models").and_then(Value::as_array) else {
+            continue;
+        };
+        for entry in entries {
+            let Some(id) = entry.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            models.push(CatalogModel {
+                provider: provider.clone(),
+                model: id.to_string(),
+                name: model_name_from_id(id),
+                description: entry
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                base_url: String::new(),
+                source: "catalog".to_string(),
+            });
+        }
+    }
+    models
+}
+
+fn state_db() -> PathBuf {
+    hermes_home().join("state.db")
+}
+
+fn open_state_db() -> Result<Option<Connection>, String> {
+    let db_path = state_db();
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map(Some)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -847,6 +1280,535 @@ fn send_message_via_cli(
 }
 
 #[tauri::command]
+fn get_toolsets(profile: Option<String>) -> Vec<ToolsetInfo> {
+    let config_file = profile_home(profile.as_deref()).join("config.yaml");
+    let Ok(content) = fs::read_to_string(config_file) else {
+        return localize_tools(&|_| true);
+    };
+
+    let enabled = parse_enabled_toolsets(&content);
+    if enabled.is_empty() && !content.contains("platform_toolsets") {
+        return localize_tools(&|_| true);
+    }
+
+    localize_tools(&|key| enabled.contains(key))
+}
+
+#[tauri::command]
+fn set_toolset_enabled(
+    key: String,
+    enabled: bool,
+    profile: Option<String>,
+) -> Result<bool, String> {
+    let config_file = profile_home(profile.as_deref()).join("config.yaml");
+    let Ok(content) = fs::read_to_string(&config_file) else {
+        return Ok(false);
+    };
+
+    let mut current = parse_enabled_toolsets(&content);
+    if enabled {
+        current.insert(key);
+    } else {
+        current.remove(&key);
+    }
+
+    let mut entries = current.into_iter().collect::<Vec<_>>();
+    entries.sort();
+    let toolset_lines = entries
+        .iter()
+        .map(|tool| format!("      - {tool}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let new_section = format!("  cli:\n{toolset_lines}");
+
+    let next = if content.contains("platform_toolsets") {
+        let lines = content.lines().map(ToString::to_string).collect::<Vec<_>>();
+        let mut result = Vec::new();
+        let mut in_platform_toolsets = false;
+        let mut in_cli = false;
+        let mut cli_inserted = false;
+
+        for line in lines {
+            let trimmed = line.trim_end();
+            if regex::Regex::new(r"^\s*platform_toolsets\s*:")
+                .unwrap()
+                .is_match(trimmed)
+            {
+                in_platform_toolsets = true;
+                result.push(line);
+                continue;
+            }
+
+            if in_platform_toolsets && regex::Regex::new(r"^\s+cli\s*:").unwrap().is_match(trimmed)
+            {
+                in_cli = true;
+                result.push(new_section.clone());
+                cli_inserted = true;
+                continue;
+            }
+
+            if in_cli {
+                if regex::Regex::new(r"^\s+-\s").unwrap().is_match(trimmed) {
+                    continue;
+                }
+                if regex::Regex::new(r"^\s{4}\S").unwrap().is_match(trimmed)
+                    || (!trimmed.is_empty() && !trimmed.starts_with(char::is_whitespace))
+                    || trimmed.is_empty()
+                {
+                    in_cli = false;
+                    result.push(line);
+                    continue;
+                }
+                continue;
+            }
+
+            if in_platform_toolsets
+                && !trimmed.is_empty()
+                && !trimmed.starts_with(char::is_whitespace)
+            {
+                in_platform_toolsets = false;
+                if !cli_inserted {
+                    result.push(new_section.clone());
+                    cli_inserted = true;
+                }
+            }
+            result.push(line);
+        }
+
+        if !cli_inserted {
+            result.push(new_section);
+        }
+        result.join("\n")
+    } else {
+        format!(
+            "{}\n\nplatform_toolsets:\n{}\n",
+            content.trim_end(),
+            new_section
+        )
+    };
+
+    safe_write(config_file, next)?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn list_installed_skills(profile: Option<String>) -> Vec<InstalledSkill> {
+    list_installed_skill_dir(profile_home(profile.as_deref()).join("skills"))
+}
+
+#[tauri::command]
+fn list_bundled_skills() -> Vec<SkillSearchResult> {
+    list_skill_dir(hermes_repo().join("skills"), true)
+}
+
+#[tauri::command]
+fn get_skill_content(skill_path: String) -> Result<String, String> {
+    fs::read_to_string(PathBuf::from(skill_path).join("SKILL.md"))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn install_skill(identifier: String, profile: Option<String>) -> ActionResult {
+    let mut cmd = Command::new(hermes_python());
+    cmd.arg(hermes_script());
+    if let Some(profile_name) = profile
+        .as_deref()
+        .filter(|value| !value.is_empty() && *value != "default")
+    {
+        cmd.arg("-p").arg(profile_name);
+    }
+    cmd.args(["skills", "install", &identifier, "--yes"])
+        .current_dir(hermes_repo())
+        .env("PATH", enhanced_path())
+        .env("HERMES_HOME", hermes_home())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    match cmd.output() {
+        Ok(output) if output.status.success() => ActionResult {
+            success: true,
+            error: None,
+        },
+        Ok(output) => ActionResult {
+            success: false,
+            error: Some(
+                strip_ansi(&String::from_utf8_lossy(&output.stderr))
+                    .trim()
+                    .to_string(),
+            ),
+        },
+        Err(error) => ActionResult {
+            success: false,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
+#[tauri::command]
+fn uninstall_skill(name: String, profile: Option<String>) -> ActionResult {
+    let mut cmd = Command::new(hermes_python());
+    cmd.arg(hermes_script());
+    if let Some(profile_name) = profile
+        .as_deref()
+        .filter(|value| !value.is_empty() && *value != "default")
+    {
+        cmd.arg("-p").arg(profile_name);
+    }
+    cmd.args(["skills", "uninstall", &name, "--yes"])
+        .current_dir(hermes_repo())
+        .env("PATH", enhanced_path())
+        .env("HERMES_HOME", hermes_home())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    match cmd.output() {
+        Ok(output) if output.status.success() => ActionResult {
+            success: true,
+            error: None,
+        },
+        Ok(output) => ActionResult {
+            success: false,
+            error: Some(
+                strip_ansi(&String::from_utf8_lossy(&output.stderr))
+                    .trim()
+                    .to_string(),
+            ),
+        },
+        Err(error) => ActionResult {
+            success: false,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
+#[tauri::command]
+fn list_sessions(limit: Option<i64>, offset: Option<i64>) -> Result<Vec<SessionSummary>, String> {
+    let Some(db) = open_state_db()? else {
+        return Ok(Vec::new());
+    };
+    let mut stmt = db
+        .prepare(
+            "SELECT id, source, started_at, ended_at, message_count, model, title
+             FROM sessions
+             ORDER BY started_at DESC
+             LIMIT ?1 OFFSET ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![limit.unwrap_or(30), offset.unwrap_or(0)],
+            |row| {
+                Ok(SessionSummary {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    started_at: row.get(2)?,
+                    ended_at: row.get(3)?,
+                    message_count: row.get(4)?,
+                    model: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                    title: row.get(6)?,
+                    preview: String::new(),
+                })
+            },
+        )
+        .map_err(|error| error.to_string())?;
+
+    let mut sessions = Vec::new();
+    for row in rows {
+        sessions.push(row.map_err(|error| error.to_string())?);
+    }
+    Ok(sessions)
+}
+
+#[tauri::command]
+fn get_session_messages(session_id: String) -> Result<Vec<SessionMessage>, String> {
+    let Some(db) = open_state_db()? else {
+        return Ok(Vec::new());
+    };
+    let mut stmt = db
+        .prepare(
+            "SELECT id, role, content, timestamp, tool_calls, tool_name
+             FROM messages
+             WHERE session_id = ?1 AND (content IS NOT NULL OR tool_calls IS NOT NULL)
+             ORDER BY timestamp, id",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([session_id], |row| {
+            Ok(SessionMessage {
+                id: row.get(0)?,
+                role: row.get(1)?,
+                content: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                timestamp: row.get(3)?,
+                tool_calls: row.get(4)?,
+                tool_name: row.get(5)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut messages = Vec::new();
+    for row in rows {
+        messages.push(row.map_err(|error| error.to_string())?);
+    }
+    Ok(messages)
+}
+
+#[tauri::command]
+fn search_sessions(query: String, limit: Option<i64>) -> Result<Vec<SearchResult>, String> {
+    let Some(db) = open_state_db()? else {
+        return Ok(Vec::new());
+    };
+    let table_exists: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='messages_fts')",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|value| value == 1)
+        .unwrap_or(false);
+    if !table_exists {
+        return Ok(Vec::new());
+    }
+
+    let sanitized = query
+        .split_whitespace()
+        .filter(|word| !word.is_empty())
+        .map(|word| format!("\"{}\"*", word.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if sanitized.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = db
+        .prepare(
+            "SELECT DISTINCT
+               m.session_id,
+               s.title,
+               s.started_at,
+               s.source,
+               s.message_count,
+               s.model,
+               snippet(messages_fts, 0, '<<', '>>', '...', 40) as snippet
+             FROM messages_fts
+             JOIN messages m ON m.id = messages_fts.rowid
+             JOIN sessions s ON s.id = m.session_id
+             WHERE messages_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![sanitized, limit.unwrap_or(20)], |row| {
+            Ok(SearchResult {
+                session_id: row.get(0)?,
+                title: row.get(1)?,
+                started_at: row.get(2)?,
+                source: row.get(3)?,
+                message_count: row.get(4)?,
+                model: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                snippet: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row.map_err(|error| error.to_string())?);
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+fn list_models() -> Result<Vec<SavedModel>, String> {
+    let mut models = read_models_file();
+    if models.is_empty() {
+        models = default_models();
+        write_models_file(&models)?;
+        return Ok(models);
+    }
+
+    let mut changed = false;
+    for default_model in default_models() {
+        if !models.iter().any(|model| {
+            model.provider == default_model.provider && model.model == default_model.model
+        }) {
+            models.push(default_model);
+            changed = true;
+        }
+    }
+    if changed {
+        write_models_file(&models)?;
+    }
+    Ok(models)
+}
+
+#[tauri::command]
+async fn list_model_catalog() -> Vec<CatalogModel> {
+    const CATALOG_URL: &str = "https://hermes-agent.nousresearch.com/docs/api/model-catalog.json";
+    let cache_file = hermes_home().join("cache").join("model_catalog.json");
+
+    if let Ok(content) = fs::read_to_string(&cache_file) {
+        if let Ok(raw) = serde_json::from_str::<Value>(&content) {
+            let cached = parse_catalog(&raw);
+            if !cached.is_empty() {
+                return cached;
+            }
+        }
+    }
+
+    if let Ok(response) = reqwest::get(CATALOG_URL).await {
+        if response.status().is_success() {
+            if let Ok(raw) = response.json::<Value>().await {
+                let parsed = parse_catalog(&raw);
+                if !parsed.is_empty() {
+                    if let Ok(content) = serde_json::to_string_pretty(&raw) {
+                        let _ = safe_write(cache_file, content);
+                    }
+                    return parsed;
+                }
+            }
+        }
+    }
+
+    fallback_catalog()
+}
+
+#[tauri::command]
+fn add_model(
+    name: String,
+    provider: String,
+    model: String,
+    base_url: String,
+) -> Result<SavedModel, String> {
+    let mut models = read_models_file();
+    if let Some(existing) = models
+        .iter()
+        .find(|entry| entry.provider == provider && entry.model == model)
+    {
+        return Ok(existing.clone());
+    }
+    let entry = SavedModel {
+        id: format!("model-{}-{}", now_ms(), models.len()),
+        name,
+        provider,
+        model,
+        base_url,
+        created_at: now_ms(),
+    };
+    models.push(entry.clone());
+    write_models_file(&models)?;
+    Ok(entry)
+}
+
+#[tauri::command]
+fn remove_model(id: String) -> Result<bool, String> {
+    let models = read_models_file();
+    let filtered = models
+        .into_iter()
+        .filter(|model| model.id != id)
+        .collect::<Vec<_>>();
+    let changed = filtered.len() != read_models_file().len();
+    if changed {
+        write_models_file(&filtered)?;
+    }
+    Ok(changed)
+}
+
+#[tauri::command]
+fn update_model(id: String, fields: Map<String, Value>) -> Result<bool, String> {
+    let mut models = read_models_file();
+    let Some(model) = models.iter_mut().find(|model| model.id == id) else {
+        return Ok(false);
+    };
+    if let Some(value) = fields.get("name").and_then(Value::as_str) {
+        model.name = value.to_string();
+    }
+    if let Some(value) = fields.get("provider").and_then(Value::as_str) {
+        model.provider = value.to_string();
+    }
+    if let Some(value) = fields.get("model").and_then(Value::as_str) {
+        model.model = value.to_string();
+    }
+    if let Some(value) = fields
+        .get("baseUrl")
+        .or_else(|| fields.get("base_url"))
+        .and_then(Value::as_str)
+    {
+        model.base_url = value.to_string();
+    }
+    write_models_file(&models)?;
+    Ok(true)
+}
+
+#[tauri::command]
+async fn get_hermes_health(profile: Option<String>) -> Value {
+    let install = check_install();
+    let connection = get_connection_config();
+    let model = get_model_config(profile.clone());
+    let env_values = env_map(profile.as_deref());
+    let api_target = if connection.mode == "remote" && !connection.remote_url.is_empty() {
+        connection.remote_url.clone()
+    } else {
+        LOCAL_API_URL.to_string()
+    };
+    let api_key = if connection.mode == "remote" {
+        if connection.api_key.is_empty() {
+            None
+        } else {
+            Some(connection.api_key.clone())
+        }
+    } else {
+        env_values
+            .get("API_SERVER_KEY")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(2500))
+        .build();
+    let mut api_ok = false;
+    let mut api_status = Value::Null;
+    let mut api_error = String::new();
+    if let Ok(client) = client {
+        let mut req = client.get(format!("{}/health", api_target.trim_end_matches('/')));
+        if let Some(key) = api_key {
+            req = req.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        match req.send().await {
+            Ok(response) => {
+                api_ok = response.status().is_success();
+                api_status = Value::from(response.status().as_u16());
+            }
+            Err(error) => api_error = error.to_string(),
+        }
+    }
+
+    serde_json::json!({
+        "install": install,
+        "connection": {
+            "mode": connection.mode,
+            "remoteUrl": connection.remote_url,
+            "hasRemoteApiKey": !connection.api_key.is_empty(),
+        },
+        "gateway": {
+            "running": gateway_running_internal(),
+            "apiUrl": api_target,
+            "apiOk": api_ok,
+            "apiStatus": api_status,
+            "apiError": api_error,
+            "hasApiServerKey": env_values.get("API_SERVER_KEY").and_then(Value::as_str).is_some(),
+        },
+        "model": model,
+        "env": {
+            "hasMiniMaxKey": env_values.get("MINIMAX_API_KEY").and_then(Value::as_str).is_some(),
+            "hasMiniMaxCnKey": env_values.get("MINIMAX_CN_API_KEY").and_then(Value::as_str).is_some(),
+            "hasOpenAIKey": env_values.get("OPENAI_API_KEY").and_then(Value::as_str).is_some(),
+            "hasXaiKey": env_values.get("XAI_API_KEY").and_then(Value::as_str).is_some(),
+            "hasDashScopeKey": env_values.get("DASHSCOPE_API_KEY").and_then(Value::as_str).is_some(),
+        },
+        "credentialProviders": [],
+    })
+}
+
+#[tauri::command]
 async fn send_message(
     app: AppHandle,
     message: String,
@@ -948,6 +1910,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             abort_chat,
+            add_model,
             check_install,
             gateway_status,
             get_config,
@@ -955,22 +1918,37 @@ pub fn run() {
             get_app_version,
             get_connection_config,
             get_hermes_home,
+            get_hermes_health,
             get_hermes_version,
             get_locale,
             get_model_config,
+            get_skill_content,
+            get_session_messages,
+            get_toolsets,
             is_remote_mode,
+            install_skill,
+            list_bundled_skills,
+            list_installed_skills,
+            list_model_catalog,
+            list_models,
+            list_sessions,
             open_external,
             open_local_path,
             reveal_local_path,
+            remove_model,
             send_message,
             set_config,
             set_connection_config,
             set_env,
             set_locale,
             set_model_config,
+            set_toolset_enabled,
+            update_model,
+            search_sessions,
             start_gateway,
             stop_gateway,
             test_remote_connection,
+            uninstall_skill,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
