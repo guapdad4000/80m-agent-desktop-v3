@@ -162,13 +162,18 @@ export const installTauriBridge = (): void => {
       }),
 
     sendMessage: async (message, profile, resumeSessionId, history, activeProject) => {
-      const response = await call(
+      const response = await call<
+        string | { response: string; sessionId?: string }
+      >(
         "send_message",
         { message, profile, resumeSessionId, history, activeProject },
         fallbackNotice("send_message"),
       );
       if (response === fallbackNotice("send_message")) {
         emitLocal("chat-error", response);
+      }
+      if (typeof response === "object") {
+        return response;
       }
       return { response };
     },
