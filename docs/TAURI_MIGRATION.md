@@ -2,7 +2,24 @@
 
 > Convert 80m Agent Desktop from Electron to Tauri 2.x — smaller binaries, native performance, tighter OS integration, no bundled Chromium.
 
-**Status:** Pre-planning. Not started.
+**Status:** Foundation started. Electron remains the production runtime while the
+Tauri shell is migrated in parallel.
+
+Current foundation:
+- `src-tauri/` exists with a Tauri 2 desktop shell.
+- `vite.tauri.config.ts` builds the existing React renderer for Tauri.
+- `npm run tauri:dev` and `npm run tauri:build` scripts are wired.
+- `src/renderer/src/tauriBridge.ts` exposes the existing `window.hermesAPI`
+  shape when running inside Tauri, so screens do not need to be rewritten all at
+  once.
+- A small first set of Rust commands is implemented: app version, install
+  presence, Hermes home, locale, connection/model defaults, open URL/path,
+  reveal path, and abort chat.
+
+Current blocker:
+- Rust is not installed on this machine yet, so the native Tauri shell has not
+  been compiled here. `npm run typecheck`, `npm run build:tauri-ui`, and the
+  existing Electron `npm run build:unpack` have been verified.
 
 ---
 
@@ -48,7 +65,15 @@ npm create tauri-app@latest 80m-agent-desktop-tauri -- --template react-ts --man
 cd 80m-agent-desktop-tauri
 ```
 
-Copy `src/renderer/` from the current repo. The Tauri template uses Vite + React so the frontend drops in cleanly.
+The repo now uses an in-place scaffold instead of copying to a second project:
+
+```bash
+npm run tauri:dev
+npm run tauri:build
+```
+
+The Tauri renderer build uses `vite.tauri.config.ts` and writes to
+`out/tauri-renderer`, leaving the Electron `out/renderer` build untouched.
 
 ### 1.2 Define Tauri commands (Rust side)
 Map every current IPC handler to a `#[tauri::command]`:
@@ -75,6 +100,15 @@ const resp = await ipcRenderer.invoke('hermes:chat', { prompt, model })
 // After (Tauri)
 const resp = await invoke('chat_stream', { prompt, model })
 ```
+
+Current bridge strategy:
+- Keep the Electron preload implementation for the Electron runtime.
+- In Tauri only, install `window.hermesAPI` from `src/renderer/src/tauriBridge.ts`.
+- Each method invokes a Rust command when available and returns a conservative
+  fallback while that command is still being ported.
+- Event channels (`chat-chunk`, `chat-done`, `chat-error`, tool progress, install
+  progress) are already routed through the bridge shape and should be backed by
+  Rust `emit` calls as chat streaming is ported.
 
 ### 1.4 Replace electron APIs
 | Electron API | Tauri equivalent |
@@ -207,9 +241,12 @@ npm run tauri build -- --bundles appimage
 ## Pre-requisites Before Starting
 
 1. **Rust installed:** `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-2. **Tauri CLI:** `npm install -D @tauri-apps/cli`
-3. **Tauri API package:** `npm install @tauri-apps/api`
-4. **Remove Electron deps:** `npm uninstall electron electron-builder` (after migration)
+2. **Linux WebKit dependencies installed:** follow the current
+   [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
+3. **Tauri CLI:** installed as `@tauri-apps/cli`.
+4. **Tauri API package:** installed as `@tauri-apps/api`.
+5. **Remove Electron deps:** only after the Tauri build reaches feature parity:
+   `npm uninstall electron electron-builder`.
 
 ---
 
