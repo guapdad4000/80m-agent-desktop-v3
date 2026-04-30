@@ -8,9 +8,22 @@ interface Props {
 const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
   const [text, setText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const audioChunksRef = useRef<Blob[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Slash commands
+  const [showCommands, setShowCommands] = useState(false);
+  const [commandIndex, setCommandIndex] = useState(0);
+
+  const COMMANDS = [
+    { cmd: "/new", desc: "Start a new chat session" },
+    { cmd: "/clear", desc: "Clear current chat" },
+    { cmd: "/model", desc: "Switch model (e.g. /model anthropic)" },
+    { cmd: "/settings", desc: "Open settings panel" }
+  ];
+
+  const filteredCommands = COMMANDS.filter(c => c.cmd.startsWith(text.split(" ")[0].toLowerCase()));
 
   // Auto-resize textarea
   useEffect(() => {
@@ -42,21 +55,86 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
+
+    if (showCommands && filteredCommands.length > 0 && !text.includes(" ")) {
+      // Autocomplete command
+      setText(filteredCommands[commandIndex].cmd + " ");
+      setShowCommands(false);
+      textareaRef.current?.focus();
+      return;
+    }
+
+    if (trimmed.startsWith("/")) {
+      const parts = trimmed.split(" ");
+      const cmd = parts[0].toLowerCase();
+      
+      // Dispatch custom events for layout/chat area to handle
+      if (cmd === "/new" || cmd === "/clear") {
+        window.dispatchEvent(new CustomEvent("layout-cmd", { detail: "new" }));
+        setText("");
+        return;
+      }
+      if (cmd === "/settings") {
+        window.dispatchEvent(new CustomEvent("layout-cmd", { detail: "settings" }));
+        setText("");
+        return;
+      }
+      if (cmd === "/model" && parts[1]) {
+        // Quick model switch
+        window.hermesAPI?.setModelConfig("openrouter", parts[1], "");
+        setText("");
+        // Notify user in chat?
+        onSend(`[System: Switched model to ${parts[1]}]`);
+        return;
+      }
+    }
+
     playClickSound();
     onSend(trimmed);
     setText("");
+    setShowCommands(false);
     textareaRef.current?.focus();
-  }, [text, disabled, onSend, playClickSound]);
+  }, [text, disabled, onSend, playClickSound, showCommands, filteredCommands, commandIndex]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (showCommands && filteredCommands.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setCommandIndex((i) => (i + 1) % filteredCommands.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setCommandIndex((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          setText(filteredCommands[commandIndex].cmd + " ");
+          setShowCommands(false);
+          return;
+        }
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
       }
     },
-    [handleSubmit],
+    [handleSubmit, showCommands, filteredCommands, commandIndex],
   );
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setText(val);
+    if (val.startsWith("/") && !val.includes(" ")) {
+      setShowCommands(true);
+      setCommandIndex(0);
+    } else {
+      setShowCommands(false);
+    }
+  };
 
   const startRecording = useCallback(async () => {
     try {
@@ -120,16 +198,36 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
   return (
     <div className="input-80m">
       <div className={`input-80m-form ${disabled ? "thinking" : ""}`}>
-        <textarea
-          ref={textareaRef}
-          className="input-80m-textarea"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Agent is thinking..." : "Send a message..."}
-          disabled={disabled}
-          rows={1}
-        />
+        <div className="input-80m-wrapper">
+          {showCommands && filteredCommands.length > 0 && (
+            <div className="slash-commands-popup">
+              {filteredCommands.map((cmd, idx) => (
+                <div 
+                  key={cmd.cmd} 
+                  className={`slash-command-item ${idx === commandIndex ? "active" : ""}`}
+                  onClick={() => {
+                    setText(cmd.cmd + " ");
+                    setShowCommands(false);
+                    textareaRef.current?.focus();
+                  }}
+                >
+                  <span className="slash-command-name">{cmd.cmd}</span>
+                  <span className="slash-command-desc">{cmd.desc}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            className="input-80m-textarea"
+            placeholder={disabled ? "Processing..." : "Type a message or /command..."}
+            value={text}
+            onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
+            disabled={disabled}
+            rows={1}
+          />
+        </div>
         <button
           className={`input-80m-mic${isRecording ? " recording" : ""}`}
           onClick={handleMicClick}

@@ -11,6 +11,7 @@ import Gateway from "../../screens/Gateway/Gateway";
 import Models from "../../screens/Models/Models";
 import Schedules from "../../screens/Schedules/Schedules";
 import CommandPalette from "./CommandPalette";
+import AgentPreviewPanel from "./AgentPreviewPanel";
 
 type View =
   | "chat"
@@ -28,6 +29,7 @@ const Layout80m: React.FC = () => {
   const [activeView, setActiveView] = useState<View>("chat");
   const [currentSession, setCurrentSession] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>("default");
 
   const handleNewSession = useCallback(async () => {
@@ -69,6 +71,20 @@ const Layout80m: React.FC = () => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // Listen for custom slash command events from InputBar
+  useEffect(() => {
+    const handleLayoutCmd = ((e: CustomEvent<string>) => {
+      const cmd = e.detail;
+      if (cmd === "new" || cmd === "clear") {
+        handleNewSession();
+      } else if (cmd === "settings") {
+        setActiveView("settings");
+      }
+    }) as EventListener;
+    window.addEventListener("layout-cmd", handleLayoutCmd);
+    return () => window.removeEventListener("layout-cmd", handleLayoutCmd);
+  }, [handleNewSession]);
 
   const renderMainContent = () => {
     const wrap = (_title: string, el: ReactNode) => (
@@ -190,6 +206,21 @@ const Layout80m: React.FC = () => {
           setShowCommandPalette(false);
         }}
       />
+
+      <AgentPreviewPanel isOpen={showPreview} onClose={() => setShowPreview(false)} />
+
+      {!showPreview && (
+        <button 
+          className="preview-toggle-btn"
+          onClick={() => setShowPreview(true)}
+          title="Show Agent Browser Preview"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      )}
 
       {/* Expose toggle for Ctrl+K via a custom event */}
       <div

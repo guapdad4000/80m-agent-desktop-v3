@@ -7,6 +7,18 @@ interface WaveformIndicatorProps {
 const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
+  const [isSpeaking, setIsSpeaking] = React.useState(false);
+
+  useEffect(() => {
+    const onStart = () => setIsSpeaking(true);
+    const onStop = () => setIsSpeaking(false);
+    window.addEventListener("agent-speaking-start", onStart);
+    window.addEventListener("agent-speaking-stop", onStop);
+    return () => {
+      window.removeEventListener("agent-speaking-start", onStart);
+      window.removeEventListener("agent-speaking-stop", onStop);
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,9 +48,12 @@ const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
         const x = START_X + i * (BAR_W + GAP);
         let barH: number;
 
-        if (isActive) {
+        const active = isActive || isSpeaking;
+
+        if (active) {
           const phase = (i / BAR_COUNT) * Math.PI * 2;
-          const sineVal = Math.sin(elapsed * 4 + phase);
+          const speedMultiplier = isSpeaking ? 8 : 4; // Faster when speaking
+          const sineVal = Math.sin(elapsed * speedMultiplier + phase);
           barH = 1 + (sineVal + 1) * 3.5;
           const opacity = 0.4 + ((sineVal + 1) / 2) * 0.6;
           ctx.fillStyle = `rgba(34, 197, 94, ${opacity})`;
@@ -60,7 +75,7 @@ const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isActive]);
+  }, [isActive, isSpeaking]);
 
   return (
     <canvas
@@ -68,7 +83,7 @@ const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
       width={44 * window.devicePixelRatio}
       height={20 * window.devicePixelRatio}
       style={{ width: 44, height: 20 }}
-      className={`transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-30"}`}
+      className={`transition-opacity duration-300 ${isActive || isSpeaking ? "opacity-100" : "opacity-30"}`}
     />
   );
 };

@@ -15,6 +15,13 @@ function safeOpenExternal(url: string): void {
     // invalid URL — silently ignore
   }
 }
+
+import {
+  startBrowserService,
+  stopBrowserService,
+  navigateTo,
+  getBrowserState
+} from "./playwright";
 import {
   checkInstallStatus,
   runInstall,
@@ -31,7 +38,9 @@ import {
   discoverMemoryProviders,
   readLogs,
   InstallProgress,
+  HERMES_HOME,
 } from "./installer";
+import * as fs from "fs";
 import {
   sendMessage,
   startGateway,
@@ -412,6 +421,23 @@ function setupIPC(): void {
     }
   });
 
+  // File Sandbox
+  ipcMain.handle("copy-file-to-workspace", async (_event, sourcePath: string) => {
+    try {
+      const cacheDir = join(HERMES_HOME, "cache");
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+      const filename = require('path').basename(sourcePath);
+      const destPath = join(cacheDir, filename);
+      await fs.promises.copyFile(sourcePath, destPath);
+      return destPath;
+    } catch (err) {
+      console.error("Failed to copy file to workspace:", err);
+      return null;
+    }
+  });
+
   // Gateway
   ipcMain.handle("start-gateway", () => startGateway());
   ipcMain.handle("stop-gateway", () => {
@@ -672,6 +698,17 @@ function setupIPC(): void {
   ipcMain.handle("read-logs", (_event, logFile?: string, lines?: number) =>
     readLogs(logFile, lines),
   );
+
+  // Playwright
+  ipcMain.handle("start-browser", () => {
+    if (mainWindow) {
+      return startBrowserService(mainWindow);
+    }
+    return Promise.resolve();
+  });
+  ipcMain.handle("stop-browser", () => stopBrowserService());
+  ipcMain.handle("navigate-browser", (_event, url: string) => navigateTo(url));
+  ipcMain.handle("get-browser-state", () => getBrowserState());
 }
 
 function buildMenu(): void {
@@ -881,4 +918,5 @@ app.on("before-quit", () => {
   }
   stopGateway();
   stopClaw3d();
+  stopBrowserService();
 });

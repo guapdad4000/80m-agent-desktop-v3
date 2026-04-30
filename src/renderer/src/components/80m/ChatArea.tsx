@@ -44,6 +44,23 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, []);
 
+  const playTTS = useCallback((text: string) => {
+    try {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel(); // clear previous
+      const utterance = new SpeechSynthesisUtterance(text.replace(/[*#_~`]/g, ""));
+      utterance.rate = 1.1;
+      utterance.pitch = 0.9;
+      // Emit event so AtmMascot or WaveformIndicator can react
+      utterance.onstart = () => window.dispatchEvent(new CustomEvent("agent-speaking-start"));
+      utterance.onend = () => window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
+      utterance.onerror = () => window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("TTS failed:", err);
+    }
+  }, []);
+
   const playTypingSound = useCallback(() => {
     try {
       const ctx = new AudioContext();
@@ -98,10 +115,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     try {
       const msgs = await window.hermesAPI.getSessionMessages(id);
       setMessages(
-        (msgs || []).map((m: { role: string; content: string }, i: number) => ({
+        // @ts-ignore
+        (msgs || []).map((m: any, i: number) => ({
           id: `${id}-${i}`,
-          role: m.role as "user" | "assistant" | "system",
+          role: m.role as "user" | "assistant" | "system" | "tool",
           content: m.content,
+          tool_calls: m.tool_calls,
+          tool_name: m.tool_name,
         })),
       );
     } catch (_) {}
@@ -156,8 +176,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           const resolvedSessionId = newSessionId || activeSessionId || null;
           setSessionId(resolvedSessionId);
           onSessionChange?.(resolvedSessionId);
+          
+          // Re-fetch the entire session so tool messages are captured from SQLite
+          if (resolvedSessionId) {
+            loadSession(resolvedSessionId);
+          }
+
           setIsLoading(false);
           playDoneSound();
+          playTTS(fullResponseRef.current);
+          
           unsubChunkRef.current?.();
           unsubDoneRef.current?.();
           unsubErrorRef.current?.();
@@ -218,8 +246,40 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     ],
   );
 
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!window.hermesAPI || !e.dataTransfer.files.length) return;
+    
+    // Support single file drop for now
+    const file = e.dataTransfer.files[0];
+    const filePath = (file as any).path; // Available in Electron Chromium
+    if (!filePath) return;
+    
+    try {
+      // @ts-ignore
+      const destPath = await window.hermesAPI.copyFileToWorkspace(filePath);
+      if (destPath) {
+        // Append context to input bar (requires state lifting, but we can inject it by triggering handleSend directly or modifying an input ref if available.
+        // For now, let's just send it directly as a system-like context or prompt the user)
+        const promptInjection = `[User uploaded a file at ${destPath}. Use your tools (like read_file or analyze_image) to read it if asked.]\n`;
+        // Quick way to put it in chat: 
+        handleSend(promptInjection + "I've uploaded a file.");
+      }
+    } catch (err) {
+      console.error("Failed to copy dropped file:", err);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   return (
-    <div className="main-80m">
+    <div 
+      className="main-80m" 
+      onDrop={handleDrop} 
+      onDragOver={handleDragOver}
+    >
       <Messages messages={messages} isLoading={isLoading} />
       <InputBar onSend={handleSend} disabled={isLoading} />
     </div>

@@ -214,9 +214,11 @@ const hermesAPI = {
   ): Promise<
     Array<{
       id: number;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "tool";
       content: string;
       timestamp: number;
+      tool_calls?: string;
+      tool_name?: string;
     }>
   > => ipcRenderer.invoke("get-session-messages", sessionId),
 
@@ -630,6 +632,21 @@ const hermesAPI = {
     lines?: number,
   ): Promise<{ content: string; path: string }> =>
     ipcRenderer.invoke("read-logs", logFile, lines),
+
+  // File Sandbox
+  copyFileToWorkspace: (sourcePath: string): Promise<string | null> =>
+    ipcRenderer.invoke("copy-file-to-workspace", sourcePath),
+
+  // Playwright
+  startBrowser: (): Promise<void> => ipcRenderer.invoke("start-browser"),
+  stopBrowser: (): Promise<void> => ipcRenderer.invoke("stop-browser"),
+  navigateBrowser: (url: string): Promise<void> => ipcRenderer.invoke("navigate-browser", url),
+  getBrowserState: (): Promise<{ url: string } | null> => ipcRenderer.invoke("get-browser-state"),
+  onPlaywrightNavigated: (callback: (url: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, url: string): void => callback(url);
+    ipcRenderer.on("playwright-navigated", handler);
+    return () => ipcRenderer.removeListener("playwright-navigated", handler);
+  },
 };
 
 if (process.contextIsolated) {

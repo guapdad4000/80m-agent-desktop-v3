@@ -5,8 +5,10 @@ import rehypeHighlight from "rehype-highlight";
 
 export interface Message {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
+  tool_calls?: string;
+  tool_name?: string;
 }
 
 interface Props {
@@ -90,6 +92,32 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
                 {msg.content +
                   (isLoading && index === messages.length - 1 ? " █" : "")}
               </ReactMarkdown>
+            ) : msg.role === "tool" ? (
+              <div className="msg-80m-tool-block">
+                {msg.tool_name === "terminal" ? (
+                  <div className="terminal-visualizer">
+                    <div className="terminal-header">
+                      <span className="terminal-dot"></span>
+                      <span className="terminal-dot"></span>
+                      <span className="terminal-dot"></span>
+                      <span className="terminal-title">TERMINAL EXECUTION</span>
+                    </div>
+                    {msg.tool_calls && (
+                      <pre className="terminal-command">
+                        <code>{JSON.parse(msg.tool_calls).command}</code>
+                      </pre>
+                    )}
+                    <pre className="terminal-output">
+                      <code>{msg.content}</code>
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="generic-tool-visualizer">
+                    <div className="tool-header">🛠️ Tool: {msg.tool_name}</div>
+                    <pre><code>{msg.content}</code></pre>
+                  </div>
+                )}
+              </div>
             ) : (
               msg.content
             )}

@@ -43,6 +43,9 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
   const [hermesVersion, setHermesVersion] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
 
+  // Models List
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; provider: string; model: string; baseUrl: string }>>([]);
+
   useEffect(() => {
     if (window.hermesAPI) {
       // Load model config
@@ -89,6 +92,11 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
         );
       });
 
+      // Load available models for picker
+      window.hermesAPI.listModels?.().then((list) => {
+        setAvailableModels(list || []);
+      });
+
       // Load versions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.hermesAPI.getHermesVersion?.().then((v: any) => {
@@ -108,6 +116,19 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
       try {
         await window.hermesAPI.setModelConfig(provider, model, baseUrl);
         await window.hermesAPI.setConnectionConfig(connMode, remoteUrl, apiKey);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch (_) {}
+    }
+  };
+
+  const handleQuickModelSelect = async (m: { provider: string; model: string; baseUrl: string }) => {
+    setProvider(m.provider);
+    setModel(m.model);
+    setBaseUrl(m.baseUrl || "");
+    if (window.hermesAPI) {
+      try {
+        await window.hermesAPI.setModelConfig(m.provider, m.model, m.baseUrl || "");
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } catch (_) {}
@@ -351,9 +372,37 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
               <div className="settings-80m-divider" />
 
               <div className="settings-80m-field">
-                <label className="settings-80m-label">Provider</label>
+                <label className="settings-80m-label">Active Model</label>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+                  {availableModels.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleQuickModelSelect(m)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "8px",
+                        border: `1px solid ${model === m.model ? "#4ade80" : "rgba(74,222,128,0.15)"}`,
+                        background:
+                          model === m.model
+                            ? "rgba(74,222,128,0.1)"
+                            : "transparent",
+                        color: model === m.model ? "#4ade80" : "#666",
+                        fontFamily: "'Fira Code', monospace",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {m.name || m.model}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="settings-80m-divider" />
+                <label className="settings-80m-label" style={{ marginTop: "16px" }}>Custom Model Override</label>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {["openrouter", "openai", "anthropic", "custom"].map((p) => (
+                  {["openrouter", "xai", "minimax", "kimi", "qwen", "nous", "openai", "custom"].map((p) => (
                     <button
                       key={p}
                       onClick={() => setProvider(p)}
@@ -380,23 +429,21 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
               </div>
 
               <div className="settings-80m-field">
-                <label className="settings-80m-label">Model Name</label>
                 <input
                   type="text"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. anthropic/claude-3-5-sonnet"
+                  placeholder="e.g. openai/gpt-5.5 or codex"
                   className="settings-80m-input"
                 />
               </div>
 
               <div className="settings-80m-field">
-                <label className="settings-80m-label">Base URL</label>
                 <input
                   type="text"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://openrouter.ai/api/v1"
+                  placeholder="Base URL (Optional)"
                   className="settings-80m-input"
                 />
               </div>
