@@ -121,6 +121,51 @@ struct SearchResult {
     snippet: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileInfo {
+    name: String,
+    path: String,
+    is_default: bool,
+    is_active: bool,
+    model: String,
+    provider: String,
+    has_env: bool,
+    has_soul: bool,
+    skill_count: usize,
+    gateway_running: bool,
+}
+
+#[derive(Serialize)]
+struct DirectoryEntry {
+    name: String,
+    is_directory: bool,
+    path: String,
+}
+
+#[derive(Serialize)]
+struct LogContent {
+    content: String,
+    path: String,
+}
+
+#[derive(Serialize)]
+struct Claw3dStatus {
+    cloned: bool,
+    installed: bool,
+    #[serde(rename = "devServerRunning")]
+    dev_server_running: bool,
+    #[serde(rename = "adapterRunning")]
+    adapter_running: bool,
+    port: i64,
+    #[serde(rename = "portInUse")]
+    port_in_use: bool,
+    #[serde(rename = "wsUrl")]
+    ws_url: String,
+    running: bool,
+    error: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SavedModel {
@@ -257,6 +302,23 @@ fn parse_env_content(content: &str) -> Map<String, Value> {
         }
     }
     values
+}
+
+fn file_info(path: PathBuf) -> Value {
+    match fs::metadata(&path) {
+        Ok(metadata) => serde_json::json!({
+            "content": fs::read_to_string(&path).unwrap_or_default(),
+            "exists": true,
+            "lastModified": metadata.modified().ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs() as i64),
+        }),
+        Err(_) => serde_json::json!({
+            "content": "",
+            "exists": false,
+            "lastModified": Value::Null,
+        }),
+    }
 }
 
 fn env_map(profile: Option<&str>) -> Map<String, Value> {
@@ -594,6 +656,85 @@ fn parse_enabled_toolsets(content: &str) -> std::collections::HashSet<String> {
         }
     }
     enabled
+}
+
+fn session_stats(profile: Option<&str>) -> (i64, i64) {
+    let db_path = profile_home(profile).join("state.db");
+    if !db_path.exists() {
+        return (0, 0);
+    }
+    let Ok(db) = Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
+        return (0, 0);
+    };
+    let sessions = db
+        .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+        .unwrap_or(0);
+    let messages = db
+        .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
+        .unwrap_or(0);
+    (sessions, messages)
+}
+
+fn count_installed_skills(home: &PathBuf) -> usize {
+    list_installed_skill_dir(home.join("skills")).len()
+}
+
+fn active_profile_name() -> String {
+    fs::read_to_string(hermes_home().join("active_profile"))
+        .map(|value| value.trim().to_string())
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "default".to_string())
+}
+
+fn profile_info(name: String, path: PathBuf, is_default: bool, active_name: &str) -> ProfileInfo {
+    let content = fs::read_to_string(path.join("config.yaml")).unwrap_or_default();
+    ProfileInfo {
+        name: name.clone(),
+        path: path.to_string_lossy().to_string(),
+        is_default,
+        is_active: active_name == name,
+        model: read_yaml_scalar(&content, "default")
+            .or_else(|| read_yaml_scalar(&content, "model"))
+            .unwrap_or_default(),
+        provider: read_yaml_scalar(&content, "provider").unwrap_or_else(|| "auto".to_string()),
+        has_env: path.join(".env").exists(),
+        has_soul: path.join("SOUL.md").exists(),
+        skill_count: count_installed_skills(&path),
+        gateway_running: path
+            .join("gateway.pid")
+            .exists()
+            .then(|| {
+                fs::read_to_string(path.join("gateway.pid"))
+                    .ok()
+                    .and_then(|raw| raw.trim().parse::<u32>().ok())
+                    .map(process_is_alive)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false),
+    }
+}
+
+fn command_result(mut command: Command) -> ActionResult {
+    match command.output() {
+        Ok(output) if output.status.success() => ActionResult {
+            success: true,
+            error: None,
+        },
+        Ok(output) => ActionResult {
+            success: false,
+            error: Some(
+                strip_ansi(&String::from_utf8_lossy(&output.stderr))
+                    .trim()
+                    .to_string(),
+            ),
+        },
+        Err(error) => ActionResult {
+            success: false,
+            error: Some(error.to_string()),
+        },
+    }
 }
 
 fn localize_tools(enabled: &dyn Fn(&str) -> bool) -> Vec<ToolsetInfo> {
@@ -1739,6 +1880,682 @@ fn update_model(id: String, fields: Map<String, Value>) -> Result<bool, String> 
 }
 
 #[tauri::command]
+fn get_credential_pool() -> Result<Map<String, Value>, String> {
+    let auth_file = hermes_home().join("auth.json");
+    let Ok(content) = fs::read_to_string(auth_file) else {
+        return Ok(Map::new());
+    };
+    let raw = serde_json::from_str::<Value>(&content).unwrap_or(Value::Null);
+    Ok(raw
+        .get("credential_pool")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+fn set_credential_pool(provider: String, entries: Vec<Value>) -> Result<bool, String> {
+    let auth_file = hermes_home().join("auth.json");
+    let mut raw = fs::read_to_string(&auth_file)
+        .ok()
+        .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    if !raw
+        .get("credential_pool")
+        .map(|value| value.is_object())
+        .unwrap_or(false)
+    {
+        raw.as_object_mut()
+            .unwrap()
+            .insert("credential_pool".to_string(), Value::Object(Map::new()));
+    }
+    raw.get_mut("credential_pool")
+        .and_then(Value::as_object_mut)
+        .unwrap()
+        .insert(provider, Value::Array(entries));
+    safe_write(
+        auth_file,
+        serde_json::to_string_pretty(&raw).map_err(|error| error.to_string())?,
+    )?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn get_platform_enabled(profile: Option<String>) -> Result<Map<String, Value>, String> {
+    let config_file = profile_home(profile.as_deref()).join("config.yaml");
+    let Ok(content) = fs::read_to_string(config_file) else {
+        return Ok(Map::new());
+    };
+    let mut result = Map::new();
+    for platform in ["telegram", "discord", "slack", "whatsapp", "signal"] {
+        let pattern = format!(
+            r"(?m)^[ \t]+{}:\s*\n[ \t]+enabled:\s*(true|false)",
+            regex::escape(platform)
+        );
+        let enabled = regex::Regex::new(&pattern)
+            .ok()
+            .and_then(|re| re.captures(&content))
+            .and_then(|captures| captures.get(1))
+            .map(|value| value.as_str() == "true")
+            .unwrap_or(false);
+        result.insert(platform.to_string(), Value::Bool(enabled));
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn set_platform_enabled(
+    platform: String,
+    enabled: bool,
+    profile: Option<String>,
+) -> Result<bool, String> {
+    let config_file = profile_home(profile.as_deref()).join("config.yaml");
+    let Ok(mut content) = fs::read_to_string(&config_file) else {
+        return Ok(false);
+    };
+    let pattern = format!(
+        r"(?m)^([ \t]+{}:\s*\n[ \t]+enabled:\s*)(?:true|false)",
+        regex::escape(&platform)
+    );
+    if let Ok(re) = regex::Regex::new(&pattern) {
+        if re.is_match(&content) {
+            content = re.replace(&content, format!("$1{enabled}")).to_string();
+        } else {
+            content.push_str(&format!(
+                "\nplatforms:\n  {platform}:\n    enabled: {enabled}\n"
+            ));
+        }
+    }
+    safe_write(config_file, content)?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn list_profiles() -> Vec<ProfileInfo> {
+    let active = active_profile_name();
+    let mut profiles = vec![profile_info(
+        "default".to_string(),
+        hermes_home(),
+        true,
+        &active,
+    )];
+    let profiles_dir = hermes_home().join("profiles");
+    if let Ok(entries) = fs::read_dir(profiles_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if !path.join("config.yaml").exists() && !path.join(".env").exists() {
+                continue;
+            }
+            profiles.push(profile_info(
+                entry.file_name().to_string_lossy().to_string(),
+                path,
+                false,
+                &active,
+            ));
+        }
+    }
+    profiles
+}
+
+#[tauri::command]
+fn create_profile(name: String, clone: bool) -> ActionResult {
+    let mut cmd = Command::new(hermes_python());
+    cmd.arg(hermes_script()).args(["profile", "create", &name]);
+    if clone {
+        cmd.arg("--clone");
+    }
+    cmd.current_dir(hermes_repo())
+        .env("PATH", enhanced_path())
+        .env("HERMES_HOME", hermes_home())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command_result(cmd)
+}
+
+#[tauri::command]
+fn delete_profile(name: String) -> ActionResult {
+    if name == "default" {
+        return ActionResult {
+            success: false,
+            error: Some("Cannot delete the default profile".to_string()),
+        };
+    }
+    let mut cmd = Command::new(hermes_python());
+    cmd.arg(hermes_script())
+        .args(["profile", "delete", &name, "--yes"])
+        .current_dir(hermes_repo())
+        .env("PATH", enhanced_path())
+        .env("HERMES_HOME", hermes_home())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command_result(cmd)
+}
+
+#[tauri::command]
+fn set_active_profile(name: String) -> Result<bool, String> {
+    let mut cmd = Command::new(hermes_python());
+    cmd.arg(hermes_script())
+        .args(["profile", "use", &name])
+        .current_dir(hermes_repo())
+        .env("PATH", enhanced_path())
+        .env("HERMES_HOME", hermes_home())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    Ok(command_result(cmd).success)
+}
+
+const ENTRY_DELIMITER: &str = "\n§\n";
+const MEMORY_CHAR_LIMIT: usize = 2200;
+const USER_CHAR_LIMIT: usize = 1375;
+
+fn memory_entries(content: &str) -> Vec<Value> {
+    content
+        .split(ENTRY_DELIMITER)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .enumerate()
+        .map(|(index, content)| serde_json::json!({ "index": index, "content": content }))
+        .collect()
+}
+
+fn serialize_memory_entries(entries: &[String]) -> String {
+    entries.join(ENTRY_DELIMITER)
+}
+
+#[tauri::command]
+fn read_memory(profile: Option<String>) -> Value {
+    let profile_ref = profile.as_deref();
+    let mem_path = profile_home(profile_ref).join("MEMORY.md");
+    let user_path = profile_home(profile_ref).join("USER.md");
+    let mem = file_info(mem_path);
+    let user = file_info(user_path);
+    let memory_content = mem.get("content").and_then(Value::as_str).unwrap_or("");
+    let user_content = user.get("content").and_then(Value::as_str).unwrap_or("");
+    let (total_sessions, total_messages) = session_stats(profile_ref);
+    serde_json::json!({
+        "memory": {
+            "content": memory_content,
+            "exists": mem.get("exists").and_then(Value::as_bool).unwrap_or(false),
+            "lastModified": mem.get("lastModified").cloned().unwrap_or(Value::Null),
+            "entries": memory_entries(memory_content),
+            "charCount": memory_content.len(),
+            "charLimit": MEMORY_CHAR_LIMIT,
+        },
+        "user": {
+            "content": user_content,
+            "exists": user.get("exists").and_then(Value::as_bool).unwrap_or(false),
+            "lastModified": user.get("lastModified").cloned().unwrap_or(Value::Null),
+            "charCount": user_content.len(),
+            "charLimit": USER_CHAR_LIMIT,
+        },
+        "stats": {
+            "totalSessions": total_sessions,
+            "totalMessages": total_messages,
+        }
+    })
+}
+
+#[tauri::command]
+fn add_memory_entry(content: String, profile: Option<String>) -> ActionResult {
+    let path = profile_home(profile.as_deref()).join("MEMORY.md");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let mut entries = existing
+        .split(ENTRY_DELIMITER)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    entries.push(content.trim().to_string());
+    let next = serialize_memory_entries(&entries);
+    if next.len() > MEMORY_CHAR_LIMIT {
+        return ActionResult {
+            success: false,
+            error: Some(format!(
+                "Would exceed memory limit ({}/{MEMORY_CHAR_LIMIT} chars)",
+                next.len()
+            )),
+        };
+    }
+    ActionResult {
+        success: safe_write(path, next).is_ok(),
+        error: None,
+    }
+}
+
+#[tauri::command]
+fn update_memory_entry(index: usize, content: String, profile: Option<String>) -> ActionResult {
+    let path = profile_home(profile.as_deref()).join("MEMORY.md");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let mut entries = existing
+        .split(ENTRY_DELIMITER)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if index >= entries.len() {
+        return ActionResult {
+            success: false,
+            error: Some("Entry not found".to_string()),
+        };
+    }
+    entries[index] = content.trim().to_string();
+    let next = serialize_memory_entries(&entries);
+    if next.len() > MEMORY_CHAR_LIMIT {
+        return ActionResult {
+            success: false,
+            error: Some(format!(
+                "Would exceed memory limit ({}/{MEMORY_CHAR_LIMIT} chars)",
+                next.len()
+            )),
+        };
+    }
+    ActionResult {
+        success: safe_write(path, next).is_ok(),
+        error: None,
+    }
+}
+
+#[tauri::command]
+fn remove_memory_entry(index: usize, profile: Option<String>) -> Result<bool, String> {
+    let path = profile_home(profile.as_deref()).join("MEMORY.md");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let mut entries = existing
+        .split(ENTRY_DELIMITER)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if index >= entries.len() {
+        return Ok(false);
+    }
+    entries.remove(index);
+    safe_write(path, serialize_memory_entries(&entries))?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn write_user_profile(content: String, profile: Option<String>) -> ActionResult {
+    if content.len() > USER_CHAR_LIMIT {
+        return ActionResult {
+            success: false,
+            error: Some(format!(
+                "Exceeds limit ({}/{USER_CHAR_LIMIT} chars)",
+                content.len()
+            )),
+        };
+    }
+    ActionResult {
+        success: safe_write(profile_home(profile.as_deref()).join("USER.md"), content).is_ok(),
+        error: None,
+    }
+}
+
+const DEFAULT_SOUL: &str = "You are Hermes, a helpful AI assistant. You are friendly, knowledgeable, and always eager to help.\n\nYou communicate clearly and concisely. When asked to perform tasks, you think step-by-step and explain your reasoning. You are honest about your limitations and ask for clarification when needed.\n\nYou strive to be helpful while being safe and responsible. You respect the user's privacy and handle sensitive information carefully.\n";
+
+#[tauri::command]
+fn read_soul(profile: Option<String>) -> String {
+    fs::read_to_string(profile_home(profile.as_deref()).join("SOUL.md")).unwrap_or_default()
+}
+
+#[tauri::command]
+fn write_soul(content: String, profile: Option<String>) -> Result<bool, String> {
+    safe_write(profile_home(profile.as_deref()).join("SOUL.md"), content)?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn reset_soul(profile: Option<String>) -> Result<String, String> {
+    write_soul(DEFAULT_SOUL.to_string(), profile)?;
+    Ok(DEFAULT_SOUL.to_string())
+}
+
+#[tauri::command]
+fn read_directory(dir_path: String) -> Result<Vec<DirectoryEntry>, String> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(dir_path).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        entries.push(DirectoryEntry {
+            name: entry.file_name().to_string_lossy().to_string(),
+            is_directory: metadata.is_dir(),
+            path: entry.path().to_string_lossy().to_string(),
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.is_directory
+            .cmp(&a.is_directory)
+            .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(entries)
+}
+
+#[tauri::command]
+fn copy_file_to_workspace(source_path: String) -> Result<Option<String>, String> {
+    let src = PathBuf::from(&source_path);
+    if !src.is_file() {
+        return Ok(None);
+    }
+    let workspace = hermes_home().join("workspace");
+    fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
+    let Some(name) = src.file_name() else {
+        return Ok(None);
+    };
+    let dest = workspace.join(name);
+    fs::copy(src, &dest).map_err(|error| error.to_string())?;
+    Ok(Some(dest.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+fn select_project_directory() -> Option<String> {
+    // Native dialogs are a later Tauri plugin step; default to HOME for now.
+    home_dir().map(|path| path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn read_logs(log_file: Option<String>, lines: Option<usize>) -> LogContent {
+    let path = log_file
+        .map(PathBuf::from)
+        .unwrap_or_else(|| hermes_home().join("logs").join("hermes.log"));
+    let content = fs::read_to_string(&path).unwrap_or_default();
+    let limit = lines.unwrap_or(300);
+    let selected = content
+        .lines()
+        .rev()
+        .take(limit)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n");
+    LogContent {
+        content: selected,
+        path: path.to_string_lossy().to_string(),
+    }
+}
+
+fn hermes_command(args: &[&str], timeout_note: &str) -> Result<String, String> {
+    let output = Command::new(hermes_python())
+        .arg(hermes_script())
+        .args(args)
+        .current_dir(hermes_repo())
+        .env("PATH", enhanced_path())
+        .env("HERMES_HOME", hermes_home())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("{timeout_note}: {error}"))?;
+    if output.status.success() {
+        Ok(strip_ansi(&String::from_utf8_lossy(&output.stdout)))
+    } else {
+        Err(strip_ansi(&String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
+#[tauri::command]
+fn run_hermes_doctor() -> String {
+    hermes_command(&["doctor"], "doctor failed").unwrap_or_else(|error| error)
+}
+
+#[tauri::command]
+fn run_hermes_dump() -> String {
+    hermes_command(&["dump"], "dump failed").unwrap_or_else(|error| error)
+}
+
+#[tauri::command]
+fn run_hermes_update() -> ActionResult {
+    match hermes_command(&["self", "update"], "update failed") {
+        Ok(_) => ActionResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => ActionResult {
+            success: false,
+            error: Some(error),
+        },
+    }
+}
+
+#[tauri::command]
+fn run_hermes_backup(_profile: Option<String>) -> Value {
+    match hermes_command(&["backup"], "backup failed") {
+        Ok(output) => serde_json::json!({ "success": true, "path": output.trim() }),
+        Err(error) => serde_json::json!({ "success": false, "error": error }),
+    }
+}
+
+#[tauri::command]
+fn run_hermes_import(archive_path: String, _profile: Option<String>) -> ActionResult {
+    match hermes_command(&["import", &archive_path], "import failed") {
+        Ok(_) => ActionResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => ActionResult {
+            success: false,
+            error: Some(error),
+        },
+    }
+}
+
+#[tauri::command]
+fn start_install() -> ActionResult {
+    ActionResult {
+        success: false,
+        error: Some("Installer has not been ported to Tauri yet. Use the Electron build or install Hermes manually.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn check_open_claw() -> Value {
+    let candidates = [
+        home_dir().unwrap_or_default().join("OpenClaw"),
+        home_dir().unwrap_or_default().join("openclaw"),
+        home_dir().unwrap_or_default().join("Apps").join("OpenClaw"),
+    ];
+    let found = candidates.into_iter().find(|path| path.exists());
+    serde_json::json!({
+        "found": found.is_some(),
+        "path": found.map(|path| path.to_string_lossy().to_string()),
+    })
+}
+
+#[tauri::command]
+fn run_claw_migrate() -> ActionResult {
+    ActionResult {
+        success: false,
+        error: Some("OpenClaw migration has not been ported to Tauri yet.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn check_for_updates() -> Option<String> {
+    None
+}
+
+#[tauri::command]
+fn download_update() -> bool {
+    false
+}
+
+#[tauri::command]
+fn install_update() {}
+
+#[tauri::command]
+fn list_cached_sessions(
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<SessionSummary>, String> {
+    list_sessions(limit, offset)
+}
+
+#[tauri::command]
+fn sync_session_cache() -> Result<Vec<SessionSummary>, String> {
+    list_sessions(Some(50), Some(0))
+}
+
+#[tauri::command]
+fn update_session_title(session_id: String, title: String) -> Result<(), String> {
+    let db_path = state_db();
+    if !db_path.exists() {
+        return Ok(());
+    }
+    let db = Connection::open(db_path).map_err(|error| error.to_string())?;
+    db.execute(
+        "UPDATE sessions SET title = ?1 WHERE id = ?2",
+        rusqlite::params![title, session_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn discover_memory_providers(_profile: Option<String>) -> Vec<Value> {
+    Vec::new()
+}
+
+#[tauri::command]
+fn list_mcp_servers(_profile: Option<String>) -> Vec<Value> {
+    Vec::new()
+}
+
+#[tauri::command]
+fn list_cron_jobs(_include_disabled: Option<bool>, _profile: Option<String>) -> Vec<Value> {
+    Vec::new()
+}
+
+#[tauri::command]
+fn create_cron_job(
+    _schedule: String,
+    _prompt: Option<String>,
+    _name: Option<String>,
+    _deliver: Option<String>,
+    _profile: Option<String>,
+) -> ActionResult {
+    ActionResult {
+        success: false,
+        error: Some("Cron jobs have not been ported to Tauri yet.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn remove_cron_job(_job_id: String, _profile: Option<String>) -> ActionResult {
+    ActionResult {
+        success: false,
+        error: Some("Cron jobs have not been ported to Tauri yet.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn pause_cron_job(_job_id: String, _profile: Option<String>) -> ActionResult {
+    remove_cron_job(_job_id, _profile)
+}
+
+#[tauri::command]
+fn resume_cron_job(_job_id: String, _profile: Option<String>) -> ActionResult {
+    remove_cron_job(_job_id, _profile)
+}
+
+#[tauri::command]
+fn trigger_cron_job(_job_id: String, _profile: Option<String>) -> ActionResult {
+    remove_cron_job(_job_id, _profile)
+}
+
+#[tauri::command]
+fn claw3d_status() -> Claw3dStatus {
+    Claw3dStatus {
+        cloned: false,
+        installed: false,
+        dev_server_running: false,
+        adapter_running: false,
+        port: 5174,
+        port_in_use: false,
+        ws_url: String::new(),
+        running: false,
+        error: "Claw3D has not been ported to Tauri yet.".to_string(),
+    }
+}
+
+#[tauri::command]
+fn claw3d_setup() -> ActionResult {
+    ActionResult {
+        success: false,
+        error: Some("Claw3D has not been ported to Tauri yet.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn claw3d_get_port() -> i64 {
+    5174
+}
+
+#[tauri::command]
+fn claw3d_set_port(_port: i64) -> bool {
+    false
+}
+
+#[tauri::command]
+fn claw3d_get_ws_url() -> String {
+    String::new()
+}
+
+#[tauri::command]
+fn claw3d_set_ws_url(_url: String) -> bool {
+    false
+}
+
+#[tauri::command]
+fn claw3d_start_all() -> ActionResult {
+    claw3d_setup()
+}
+
+#[tauri::command]
+fn claw3d_stop_all() -> bool {
+    false
+}
+
+#[tauri::command]
+fn claw3d_get_logs() -> String {
+    String::new()
+}
+
+#[tauri::command]
+fn claw3d_start_dev() -> bool {
+    false
+}
+
+#[tauri::command]
+fn claw3d_stop_dev() -> bool {
+    false
+}
+
+#[tauri::command]
+fn claw3d_start_adapter() -> bool {
+    false
+}
+
+#[tauri::command]
+fn claw3d_stop_adapter() -> bool {
+    false
+}
+
+#[tauri::command]
+fn start_browser() {}
+
+#[tauri::command]
+fn stop_browser() {}
+
+#[tauri::command]
+fn navigate_browser(_url: String) {}
+
+#[tauri::command]
+fn get_browser_state() -> Option<Value> {
+    None
+}
+
+#[tauri::command]
 async fn get_hermes_health(profile: Option<String>) -> Value {
     let install = check_install();
     let connection = get_connection_config();
@@ -1910,10 +2727,34 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             abort_chat,
+            add_memory_entry,
             add_model,
+            check_for_updates,
             check_install,
+            check_open_claw,
+            claw3d_get_logs,
+            claw3d_get_port,
+            claw3d_get_ws_url,
+            claw3d_set_port,
+            claw3d_set_ws_url,
+            claw3d_setup,
+            claw3d_start_adapter,
+            claw3d_start_all,
+            claw3d_start_dev,
+            claw3d_status,
+            claw3d_stop_adapter,
+            claw3d_stop_all,
+            claw3d_stop_dev,
+            copy_file_to_workspace,
+            create_cron_job,
+            create_profile,
+            delete_profile,
+            discover_memory_providers,
+            download_update,
             gateway_status,
+            get_browser_state,
             get_config,
+            get_credential_pool,
             get_env,
             get_app_version,
             get_connection_config,
@@ -1922,33 +2763,68 @@ pub fn run() {
             get_hermes_version,
             get_locale,
             get_model_config,
+            get_platform_enabled,
             get_skill_content,
             get_session_messages,
             get_toolsets,
             is_remote_mode,
             install_skill,
+            install_update,
             list_bundled_skills,
+            list_cached_sessions,
+            list_cron_jobs,
             list_installed_skills,
+            list_mcp_servers,
             list_model_catalog,
             list_models,
+            list_profiles,
             list_sessions,
+            navigate_browser,
             open_external,
             open_local_path,
+            pause_cron_job,
+            read_directory,
+            read_logs,
+            read_memory,
+            read_soul,
+            remove_memory_entry,
             reveal_local_path,
             remove_model,
+            remove_cron_job,
+            reset_soul,
+            resume_cron_job,
+            run_claw_migrate,
+            run_hermes_backup,
+            run_hermes_doctor,
+            run_hermes_dump,
+            run_hermes_import,
+            run_hermes_update,
+            select_project_directory,
             send_message,
+            set_active_profile,
             set_config,
             set_connection_config,
+            set_credential_pool,
             set_env,
             set_locale,
             set_model_config,
+            set_platform_enabled,
             set_toolset_enabled,
+            start_browser,
+            start_install,
             update_model,
+            update_memory_entry,
             search_sessions,
             start_gateway,
+            stop_browser,
             stop_gateway,
+            sync_session_cache,
             test_remote_connection,
+            trigger_cron_job,
             uninstall_skill,
+            update_session_title,
+            write_soul,
+            write_user_profile,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

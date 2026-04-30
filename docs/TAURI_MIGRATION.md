@@ -2,8 +2,8 @@
 
 > Convert 80m Agent Desktop from Electron to Tauri 2.x — smaller binaries, native performance, tighter OS integration, no bundled Chromium.
 
-**Status:** Foundation started. Electron remains the production runtime while the
-Tauri shell is migrated in parallel.
+**Status:** Parallel Tauri shell builds and launches. Electron remains available
+while feature parity is hardened.
 
 Current foundation:
 - `src-tauri/` exists with a Tauri 2 desktop shell.
@@ -12,19 +12,24 @@ Current foundation:
 - `src/renderer/src/tauriBridge.ts` exposes the existing `window.hermesAPI`
   shape when running inside Tauri, so screens do not need to be rewritten all at
   once.
-- A small first set of Rust commands is implemented: app version, install
-  presence, Hermes home, locale, connection/model defaults, open URL/path,
-  reveal path, and abort chat.
+- The renderer bridge currently has Tauri command coverage for every known
+  `window.hermesAPI` call. Core chat, gateway, config, sessions, models, tools,
+  skills, app data, profiles, memory, soul, credentials, logs, project files,
+  and Hermes maintenance commands have native Rust implementations.
+- Specialty surfaces that still need full parity are intentionally conservative:
+  updater, cron jobs, Claw3D/OpenClaw, MCP discovery, memory-provider discovery,
+  and embedded browser commands return safe fallback/stub responses instead of
+  failing the renderer invoke path.
 
 Current build status:
 - Rust 1.95.0 and the Linux WebKitGTK prerequisites have been installed on this
   machine.
 - `npm run tauri:build` succeeds and produces Linux AppImage and `.deb` bundles
   under `src-tauri/target/release/bundle/`.
-- `npm run typecheck`, `npm run build:tauri-ui`, and the existing Electron
-  `npm run build:unpack` have been verified.
-- The Tauri shell is still a compatibility shell: the renderer opens against
-  the bridge, but most Hermes backend commands still need Rust implementations.
+- `npm run typecheck`, `cargo check --manifest-path src-tauri/Cargo.toml`, and
+  `npm run tauri:build` have been verified.
+- The release binary starts successfully in a launch probe and stays alive until
+  killed by timeout.
 
 ---
 
