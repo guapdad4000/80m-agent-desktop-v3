@@ -1,6 +1,6 @@
-# Contributing to Hermes Desktop
+# Contributing to 80m Agent Desktop
 
-Thanks for your interest in contributing to Hermes Desktop! Whether it's a bug fix, a new feature, improved docs, or just a typo — every contribution helps.
+Thanks for your interest in contributing to 80m Agent Desktop! Whether it's a bug fix, a new feature, improved docs, or just a typo — every contribution helps.
 
 ## Languages
 
@@ -52,7 +52,7 @@ A maintainer will review your PR and may request changes. Once approved, it will
 
 ## Reporting Bugs
 
-Found a bug? [Open an issue](https://github.com/NousResearch/hermes-desktop/issues/new) with:
+Found a bug? [Open an issue](https://github.com/guapdad4000/80m-agent-desktop/issues/new) with:
 
 - A clear title and description.
 - Steps to reproduce the issue.
@@ -61,7 +61,7 @@ Found a bug? [Open an issue](https://github.com/NousResearch/hermes-desktop/issu
 
 ## Requesting Features
 
-Have an idea? [Open an issue](https://github.com/NousResearch/hermes-desktop/issues/new) and describe:
+Have an idea? [Open an issue](https://github.com/guapdad4000/80m-agent-desktop/issues/new) and describe:
 
 - The problem you're trying to solve.
 - How you'd like it to work.
@@ -87,7 +87,7 @@ build/                   Packaging resources
 ## Community
 
 - Join the [Nous Research Discord](https://discord.gg/NousResearch) to chat with other contributors.
-- Check the [documentation](https://hermes-agent.nousresearch.com/docs/) for more context on how Hermes works.
+- Check the [Hermes Agent documentation](https://hermes-agent.nousresearch.com/docs/) for more context on how Hermes works.
 
 ## License
 
