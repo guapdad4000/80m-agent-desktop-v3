@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 const Animated80MLogo: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -6,7 +6,7 @@ const Animated80MLogo: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let rafId: number;
     const startTime = Date.now();
@@ -33,21 +33,21 @@ const Animated80MLogo: React.FC = () => {
 
       // Shadow/glow layer
       ctx.save();
-      ctx.shadowColor = '#4ade80';
+      ctx.shadowColor = "#4ade80";
       ctx.shadowBlur = glowRadius;
       ctx.font = `bold ${h * 0.85}px 'Bodoni Moda', 'Georgia', serif`;
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'left';
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
 
       // Draw "80m" in off-white
-      ctx.fillStyle = '#e8e8e8';
-      ctx.fillText('80m', 0, 0);
+      ctx.fillStyle = "#e8e8e8";
+      ctx.fillText("80m", 0, 0);
 
       // Draw "." dot in green with breathing glow
       ctx.shadowBlur = glowRadius + 4;
       ctx.fillStyle = `rgba(74, ${197 + Math.floor(breathe * 30)}, 128, ${0.8 + breathe * 0.2})`;
-      const dotX = ctx.measureText('80m').width + 2;
-      ctx.fillText('.', dotX, 0);
+      const dotX = ctx.measureText("80m").width + 2;
+      ctx.fillText(".", dotX, 0);
 
       ctx.restore();
 
@@ -61,7 +61,7 @@ const Animated80MLogo: React.FC = () => {
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: 100, height: 40, display: 'block' }}
+      style={{ width: 100, height: 40, display: "block" }}
       aria-hidden="true"
     />
   );

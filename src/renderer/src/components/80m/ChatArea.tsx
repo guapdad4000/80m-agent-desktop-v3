@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Messages from './Messages';
-import InputBar from './InputBar';
-import type { Message } from './Messages';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import Messages from "./Messages";
+import InputBar from "./InputBar";
+import type { Message } from "./Messages";
 
 interface ChatAreaProps {
   currentSession: string | null;
@@ -10,7 +10,12 @@ interface ChatAreaProps {
   profile?: string;
 }
 
-const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSessionChange, profile }) => {
+const ChatArea: React.FC<ChatAreaProps> = ({
+  currentSession,
+  onNewSession,
+  onSessionChange,
+  profile,
+}) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(currentSession);
@@ -18,7 +23,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
   const unsubChunkRef = useRef<(() => void) | null>(null);
   const unsubDoneRef = useRef<(() => void) | null>(null);
   const unsubErrorRef = useRef<(() => void) | null>(null);
-  const fullResponseRef = useRef('');
+  const fullResponseRef = useRef("");
 
   const playDoneSound = useCallback(() => {
     try {
@@ -27,7 +32,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.type = 'sine';
+      osc.type = "sine";
       osc.frequency.setValueAtTime(660, ctx.currentTime);
       osc.frequency.setValueAtTime(880, ctx.currentTime + 0.06);
       gain.gain.setValueAtTime(0.06, ctx.currentTime);
@@ -44,16 +49,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
       const ctx = new AudioContext();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      
+
       osc.connect(gain);
       gain.connect(ctx.destination);
-      
-      osc.type = 'square';
+
+      osc.type = "square";
       osc.frequency.setValueAtTime(150 + Math.random() * 50, ctx.currentTime);
-      
+
       gain.gain.setValueAtTime(0.01, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-      
+
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.05);
     } catch (_) {
@@ -73,7 +78,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    const container = document.querySelector('.messages-80m');
+    const container = document.querySelector(".messages-80m");
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
@@ -95,9 +100,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
       setMessages(
         (msgs || []).map((m: { role: string; content: string }, i: number) => ({
           id: `${id}-${i}`,
-          role: m.role as 'user' | 'assistant' | 'system',
+          role: m.role as "user" | "assistant" | "system",
           content: m.content,
-        }))
+        })),
       );
     } catch (_) {}
   }, []);
@@ -108,12 +113,12 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
 
       const userMsg: Message = {
         id: `user-${Date.now()}`,
-        role: 'user',
+        role: "user",
         content: text,
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
-      fullResponseRef.current = '';
+      fullResponseRef.current = "";
 
       let activeSessionId = sessionId;
       if (!activeSessionId) {
@@ -129,7 +134,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
         playTypingSound();
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
+          if (last?.role === "assistant") {
             return [
               ...prev.slice(0, -1),
               { ...last, content: fullResponseRef.current },
@@ -139,30 +144,32 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
             ...prev,
             {
               id: `assistant-${Date.now()}`,
-              role: 'assistant' as const,
+              role: "assistant" as const,
               content: chunk,
             },
           ];
         });
       });
 
-      unsubDoneRef.current = window.hermesAPI.onChatDone((newSessionId: string | undefined) => {
-        const resolvedSessionId = newSessionId || activeSessionId || null;
-        setSessionId(resolvedSessionId);
-        onSessionChange?.(resolvedSessionId);
-        setIsLoading(false);
-        playDoneSound();
-        unsubChunkRef.current?.();
-        unsubDoneRef.current?.();
-        unsubErrorRef.current?.();
-      });
+      unsubDoneRef.current = window.hermesAPI.onChatDone(
+        (newSessionId: string | undefined) => {
+          const resolvedSessionId = newSessionId || activeSessionId || null;
+          setSessionId(resolvedSessionId);
+          onSessionChange?.(resolvedSessionId);
+          setIsLoading(false);
+          playDoneSound();
+          unsubChunkRef.current?.();
+          unsubDoneRef.current?.();
+          unsubErrorRef.current?.();
+        },
+      );
 
       unsubErrorRef.current = window.hermesAPI.onChatError((error: string) => {
         setMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'assistant' as const,
+            role: "assistant" as const,
             content: `**Error:** ${error}`,
           },
         ]);
@@ -173,20 +180,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
       });
 
       // Notify the mascot that we are thinking
-      window.dispatchEvent(new CustomEvent('chat-started'));
+      window.dispatchEvent(new CustomEvent("chat-started"));
 
       try {
         const history = messages
-          .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+          .filter((msg) => msg.role === "user" || msg.role === "assistant")
           .slice(-20)
           .map((msg) => ({ role: msg.role, content: msg.content }));
-        await window.hermesAPI.sendMessage(text, profile || 'default', activeSessionId || undefined, history);
+        await window.hermesAPI.sendMessage(
+          text,
+          profile || "default",
+          activeSessionId || undefined,
+          history,
+        );
       } catch (err) {
         setMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'assistant' as const,
+            role: "assistant" as const,
             content: `**Error:** ${err}`,
           },
         ]);
@@ -196,7 +208,14 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSes
         unsubErrorRef.current?.();
       }
     },
-    [sessionId, onNewSession, onSessionChange, playDoneSound, profile, messages]
+    [
+      sessionId,
+      onNewSession,
+      onSessionChange,
+      playDoneSound,
+      profile,
+      messages,
+    ],
   );
 
   return (

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from "react";
 
 interface WaveformIndicatorProps {
   isActive: boolean;
@@ -11,9 +11,10 @@ const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const W = 44, H = 20;
+    const W = 44,
+      H = 20;
     canvas.width = W * window.devicePixelRatio;
     canvas.height = H * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
@@ -43,7 +44,7 @@ const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
           ctx.fillStyle = `rgba(34, 197, 94, ${opacity})`;
         } else {
           barH = 1;
-          ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+          ctx.fillStyle = "rgba(34, 197, 94, 0.25)";
         }
 
         const y = CENTER_Y - barH / 2;
@@ -67,7 +68,7 @@ const WaveformIndicator: React.FC<WaveformIndicatorProps> = ({ isActive }) => {
       width={44 * window.devicePixelRatio}
       height={20 * window.devicePixelRatio}
       style={{ width: 44, height: 20 }}
-      className={`transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-30'}`}
+      className={`transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-30"}`}
     />
   );
 };

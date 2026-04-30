@@ -1,10 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  Menu,
-  Notification,
-} from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Notification } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
@@ -315,12 +309,7 @@ function setupIPC(): void {
 
   ipcMain.handle(
     "set-connection-config",
-    (
-      _event,
-      mode: "local" | "remote",
-      remoteUrl: string,
-      apiKey?: string,
-    ) => {
+    (_event, mode: "local" | "remote", remoteUrl: string, apiKey?: string) => {
       setConnectionConfig({ mode, remoteUrl, apiKey: apiKey || "" });
       return true;
     },
@@ -328,8 +317,7 @@ function setupIPC(): void {
 
   ipcMain.handle(
     "test-remote-connection",
-    (_event, url: string, apiKey?: string) =>
-      testRemoteConnection(url, apiKey),
+    (_event, url: string, apiKey?: string) => testRemoteConnection(url, apiKey),
   );
 
   // Chat — lazy-start gateway on first message
@@ -773,7 +761,9 @@ function buildMenu(): void {
         {
           label: "80m Agent on GitHub",
           click: (): void => {
-            safeOpenExternal("https://github.com/guapdad4000/80m-agent-desktop");
+            safeOpenExternal(
+              "https://github.com/guapdad4000/80m-agent-desktop",
+            );
           },
         },
         {

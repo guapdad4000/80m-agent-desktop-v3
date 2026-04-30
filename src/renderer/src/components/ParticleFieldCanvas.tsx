@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 const PARTICLE_COUNT = 60;
 const MAX_DIST = 120;
@@ -21,7 +21,7 @@ const ParticleFieldCanvas: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let rafId: number;
 
@@ -32,12 +32,12 @@ const ParticleFieldCanvas: React.FC = () => {
       ctx.scale(dpr, dpr);
     };
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener("resize", resize);
 
     const onMouseMove = (e: MouseEvent) => {
       mouseRef.current = { x: e.clientX, y: e.clientY };
     };
-    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener("mousemove", onMouseMove);
 
     // Init particles
     if (particlesRef.current.length !== PARTICLE_COUNT) {
@@ -72,7 +72,9 @@ const ParticleFieldCanvas: React.FC = () => {
         const dy = p.y - mouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < MOUSE_REPEL_RADIUS && dist > 0) {
-          const force = (MOUSE_REPEL_RADIUS - dist) / MOUSE_REPEL_RADIUS * MOUSE_REPEL_STRENGTH;
+          const force =
+            ((MOUSE_REPEL_RADIUS - dist) / MOUSE_REPEL_RADIUS) *
+            MOUSE_REPEL_STRENGTH;
           p.vx += (dx / dist) * force;
           p.vy += (dy / dist) * force;
         }
@@ -103,7 +105,7 @@ const ParticleFieldCanvas: React.FC = () => {
             const highlight = mDist < MOUSE_REPEL_RADIUS ? 1 : 0;
             const baseAlpha = (1 - d / MAX_DIST) * 0.35;
             const alpha = baseAlpha + highlight * 0.3;
-            const green = highlight ? '#4ade80' : 'rgba(74, 222, 128, 0.35)';
+            const green = highlight ? "#4ade80" : "rgba(74, 222, 128, 0.35)";
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -120,7 +122,7 @@ const ParticleFieldCanvas: React.FC = () => {
       for (const p of particles) {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = '#4ade80';
+        ctx.fillStyle = "#4ade80";
         ctx.fill();
       }
 
@@ -131,8 +133,8 @@ const ParticleFieldCanvas: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', resize);
-      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("mousemove", onMouseMove);
     };
   }, []);
 
@@ -140,11 +142,11 @@ const ParticleFieldCanvas: React.FC = () => {
     <canvas
       ref={canvasRef}
       style={{
-        position: 'fixed',
+        position: "fixed",
         inset: 0,
         zIndex: 0,
-        pointerEvents: 'none',
-        display: 'block',
+        pointerEvents: "none",
+        display: "block",
       }}
       aria-hidden="true"
     />

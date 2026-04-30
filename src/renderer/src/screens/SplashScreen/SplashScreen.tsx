@@ -11,7 +11,7 @@ export default function SplashScreen({ onFinished }: Props): React.JSX.Element {
     try {
       const audio = new Audio(splashSound);
       audio.volume = 0.5;
-      audio.play().catch(e => console.log("Audio play failed:", e));
+      audio.play().catch((e) => console.log("Audio play failed:", e));
     } catch (e) {
       // ignore
     }

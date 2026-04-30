@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 const FilmGrainCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -7,7 +7,7 @@ const FilmGrainCanvas: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let rafId: number;
 
@@ -18,7 +18,7 @@ const FilmGrainCanvas: React.FC = () => {
       ctx.scale(dpr, dpr);
     };
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener("resize", resize);
 
     const draw = () => {
       frameRef.current++;
@@ -45,7 +45,7 @@ const FilmGrainCanvas: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', resize);
+      window.removeEventListener("resize", resize);
     };
   }, []);
 
@@ -53,11 +53,11 @@ const FilmGrainCanvas: React.FC = () => {
     <canvas
       ref={canvasRef}
       style={{
-        position: 'fixed',
+        position: "fixed",
         inset: 0,
         zIndex: 9999,
-        pointerEvents: 'none',
-        display: 'block',
+        pointerEvents: "none",
+        display: "block",
       }}
       aria-hidden="true"
     />

@@ -216,11 +216,15 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
         {/* Stats */}
         <div className="memory-stats">
           <div className="memory-stat">
-            <span className="memory-stat-value">{data.stats.totalSessions}</span>
+            <span className="memory-stat-value">
+              {data.stats.totalSessions}
+            </span>
             <span className="memory-stat-label">{t("memory.sessions")}</span>
           </div>
           <div className="memory-stat">
-            <span className="memory-stat-value">{data.stats.totalMessages}</span>
+            <span className="memory-stat-value">
+              {data.stats.totalMessages}
+            </span>
             <span className="memory-stat-label">{t("memory.messages")}</span>
           </div>
           <div className="memory-stat">
@@ -334,9 +338,7 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
 
             {data.memory.entries.length === 0 ? (
               <div className="memory-empty">
-                <p>
-                  {t("memory.noMemoriesYet")}
-                </p>
+                <p>{t("memory.noMemoriesYet")}</p>
                 <p className="memory-empty-hint">
                   {t("memory.addManuallyHint")}
                 </p>
@@ -373,7 +375,9 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
                     </div>
                   ) : (
                     <>
-                      <div className="memory-entry-content">{entry.content}</div>
+                      <div className="memory-entry-content">
+                        {entry.content}
+                      </div>
                       <div className="memory-entry-actions">
                         <button
                           className="btn-ghost memory-entry-btn"
@@ -449,7 +453,9 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
             />
             <div className="memory-profile-footer">
               <span className="memory-entry-chars">
-                {t("memory.chars", { count: userContent.length })} / {data.user.charLimit} {t("memory.chars", { count: 1 }).split(" ")[1]}
+                {t("memory.chars", { count: userContent.length })} /{" "}
+                {data.user.charLimit}{" "}
+                {t("memory.chars", { count: 1 }).split(" ")[1]}
               </span>
               {userEditing && (
                 <button
@@ -470,7 +476,8 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
               {t("memory.providersHint")}
               {memoryProvider ? (
                 <span>
-                  {" "}{t("memory.active")}: <strong>{memoryProvider}</strong>
+                  {" "}
+                  {t("memory.active")}: <strong>{memoryProvider}</strong>
                 </span>
               ) : (
                 <span> {t("memory.providersHintInactive")}</span>
@@ -510,7 +517,9 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
                         </button>
                       )}
                     </div>
-                    <div className="memory-provider-desc">{t(p.description)}</div>
+                    <div className="memory-provider-desc">
+                      {t(p.description)}
+                    </div>
 
                     {/* Env var config fields */}
                     {p.envVars.length > 0 && (
@@ -548,9 +557,14 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
                                   profile,
                                 );
                                 setProviderSavedKey(envKey);
-                                setTimeout(() => setProviderSavedKey(null), 2000);
+                                setTimeout(
+                                  () => setProviderSavedKey(null),
+                                  2000,
+                                );
                               }}
-                              placeholder={t("memory.enterEnvKey", { key: envKey })}
+                              placeholder={t("memory.enterEnvKey", {
+                                key: envKey,
+                              })}
                               style={{ fontSize: 12 }}
                             />
                           </div>
@@ -600,7 +614,9 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
                           }}
                           disabled={activating !== null}
                         >
-                          {activating === p.name ? t("memory.activating") : t("memory.activate")}
+                          {activating === p.name
+                            ? t("memory.activating")
+                            : t("memory.activate")}
                         </button>
                       )}
                     </div>

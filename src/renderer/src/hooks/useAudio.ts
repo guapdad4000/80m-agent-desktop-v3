@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback } from "react";
 
 export const useAudio = () => {
   const ctxRef = useRef<AudioContext | null>(null);
@@ -6,7 +6,11 @@ export const useAudio = () => {
 
   const getCtx = useCallback(() => {
     if (!ctxRef.current) {
-      ctxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      ctxRef.current = new (
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext
+      )();
     }
     return ctxRef.current;
   }, []);
@@ -14,7 +18,7 @@ export const useAudio = () => {
   const unlock = useCallback(() => {
     if (unlockedRef.current) return;
     const ctx = getCtx();
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === "suspended") ctx.resume();
     unlockedRef.current = true;
   }, [getCtx]);
 
@@ -24,7 +28,7 @@ export const useAudio = () => {
       const ctx = getCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'triangle';
+      osc.type = "triangle";
       osc.frequency.value = 880;
       gain.gain.setValueAtTime(0.08, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
@@ -44,7 +48,7 @@ export const useAudio = () => {
       const tone = (freq: number, startTime: number, duration: number) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine';
+        osc.type = "sine";
         osc.frequency.value = freq;
         gain.gain.setValueAtTime(0, startTime);
         gain.gain.linearRampToValueAtTime(0.1, startTime + 0.01);

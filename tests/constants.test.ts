@@ -12,7 +12,10 @@ import {
 
 describe("PROVIDERS", () => {
   it("has auto-detect as first option", () => {
-    expect(PROVIDERS.options[0]).toEqual({ value: "auto", label: "constants.autoDetect" });
+    expect(PROVIDERS.options[0]).toEqual({
+      value: "auto",
+      label: "constants.autoDetect",
+    });
   });
 
   it("includes all v0.9.0 providers", () => {
@@ -166,7 +169,9 @@ describe("GATEWAY_SECTIONS", () => {
 describe("SETTINGS_SECTIONS", () => {
   it("includes LLM Providers section", () => {
     expect(
-      SETTINGS_SECTIONS.find((s) => s.title === "constants.sectionLlmProviders"),
+      SETTINGS_SECTIONS.find(
+        (s) => s.title === "constants.sectionLlmProviders",
+      ),
     ).toBeTruthy();
   });
 

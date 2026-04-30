@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Upload, User, Wifi, WifiOff, Info } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Download, Upload, User, Wifi, WifiOff, Info } from "lucide-react";
 
 interface Props {
   onBack: () => void;
 }
 
-type TabId = 'connection' | 'profiles' | 'backup' | 'about';
+type TabId = "connection" | "profiles" | "backup" | "about";
 
 interface Profile {
   id: string;
@@ -16,32 +16,32 @@ interface Profile {
 }
 
 const Settings80m: React.FC<Props> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<TabId>('connection');
-  const [provider, setProvider] = useState('openrouter');
-  const [model, setModel] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
+  const [activeTab, setActiveTab] = useState<TabId>("connection");
+  const [provider, setProvider] = useState("openrouter");
+  const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Connection
-  const [connMode, setConnMode] = useState<'local' | 'remote'>('local');
-  const [remoteUrl, setRemoteUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [connMode, setConnMode] = useState<"local" | "remote">("local");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
 
   // Profiles
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [profileName, setProfileName] = useState('');
+  const [profileName, setProfileName] = useState("");
   const [creatingProfile, setCreatingProfile] = useState(false);
 
   // Backup/Import
   const [backingUp, setBackingUp] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [backupResult, setBackupResult] = useState('');
-  const [importResult, setImportResult] = useState('');
+  const [backupResult, setBackupResult] = useState("");
+  const [importResult, setImportResult] = useState("");
 
   // About
   const [hermesVersion, setHermesVersion] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState('');
+  const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
     if (window.hermesAPI) {
@@ -50,34 +50,43 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (cfg: any) => {
           if (cfg) {
-            setProvider(cfg.provider || 'openrouter');
-            setModel(cfg.model || '');
-            setBaseUrl(cfg.baseUrl || '');
+            setProvider(cfg.provider || "openrouter");
+            setModel(cfg.model || "");
+            setBaseUrl(cfg.baseUrl || "");
           }
           setLoading(false);
         },
-        () => setLoading(false)
+        () => setLoading(false),
       );
 
       // Load connection config
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.hermesAPI.getConnectionConfig?.().then((conn: any) => {
         if (conn) {
-          setConnMode(conn.mode || 'local');
-          setRemoteUrl(conn.remoteUrl || '');
-          setApiKey(conn.apiKey || '');
+          setConnMode(conn.mode || "local");
+          setRemoteUrl(conn.remoteUrl || "");
+          setApiKey(conn.apiKey || "");
         }
       });
 
       // Load profiles - use raw response, map to our interface
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.hermesAPI.listProfiles?.().then((list: any[]) => {
-        setProfiles((list || []).map((p: { id?: string; name: string; isActive?: boolean; path?: string }) => ({
-          id: p.id || p.path || String(Math.random()),
-          name: p.name,
-          isActive: p.isActive || false,
-          createdAt: Date.now(),
-        })));
+        setProfiles(
+          (list || []).map(
+            (p: {
+              id?: string;
+              name: string;
+              isActive?: boolean;
+              path?: string;
+            }) => ({
+              id: p.id || p.path || String(Math.random()),
+              name: p.name,
+              isActive: p.isActive || false,
+              createdAt: Date.now(),
+            }),
+          ),
+        );
       });
 
       // Load versions
@@ -87,7 +96,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.hermesAPI.getAppVersion?.().then((v: any) => {
-        setAppVersion(v || '');
+        setAppVersion(v || "");
       });
     } else {
       setLoading(false);
@@ -110,10 +119,21 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
     setCreatingProfile(true);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result: any = await window.hermesAPI.createProfile(profileName.trim(), false);
+      const result: any = await window.hermesAPI.createProfile(
+        profileName.trim(),
+        false,
+      );
       const id = result?.id || result?.profileId || String(Math.random());
-      setProfiles((prev) => [...prev, { id, name: profileName.trim(), isActive: false, createdAt: Date.now() }]);
-      setProfileName('');
+      setProfiles((prev) => [
+        ...prev,
+        {
+          id,
+          name: profileName.trim(),
+          isActive: false,
+          createdAt: Date.now(),
+        },
+      ]);
+      setProfileName("");
     } catch (_) {}
     setCreatingProfile(false);
   };
@@ -134,46 +154,78 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
 
   const handleBackup = async () => {
     setBackingUp(true);
-    setBackupResult('');
+    setBackupResult("");
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result: any = await window.hermesAPI.runHermesBackup();
-      setBackupResult(result?.success ? `Backup saved: ${result.path || 'Success'}` : `Error: ${result?.error || 'Unknown error'}`);
+      setBackupResult(
+        result?.success
+          ? `Backup saved: ${result.path || "Success"}`
+          : `Error: ${result?.error || "Unknown error"}`,
+      );
     } catch (e) {
-      setBackupResult('Backup failed');
+      setBackupResult("Backup failed");
     }
     setBackingUp(false);
   };
 
   const handleImport = async () => {
     setImporting(true);
-    setImportResult('');
+    setImportResult("");
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result: any = await window.hermesAPI.runHermesImport('', '');
-      setImportResult(result?.success ? 'Import complete' : `Error: ${result?.error || 'Unknown error'}`);
+      const result: any = await window.hermesAPI.runHermesImport("", "");
+      setImportResult(
+        result?.success
+          ? "Import complete"
+          : `Error: ${result?.error || "Unknown error"}`,
+      );
     } catch (e) {
-      setImportResult('Import failed');
+      setImportResult("Import failed");
     }
     setImporting(false);
   };
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: 'connection', label: 'Connection', icon: <Wifi size={14} /> },
-    { id: 'profiles', label: 'Profiles', icon: <User size={14} /> },
-    { id: 'backup', label: 'Backup', icon: <Download size={14} /> },
-    { id: 'about', label: 'About', icon: <Info size={14} /> },
+    { id: "connection", label: "Connection", icon: <Wifi size={14} /> },
+    { id: "profiles", label: "Profiles", icon: <User size={14} /> },
+    { id: "backup", label: "Backup", icon: <Download size={14} /> },
+    { id: "about", label: "About", icon: <Info size={14} /> },
   ];
 
   if (loading) {
     return (
       <div className="main-80m">
         <div className="chat-header-80m">
-          <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#4ade80', cursor: 'pointer', fontFamily: "'Fira Code', monospace", fontSize: '12px' }}>← Back</button>
+          <button
+            onClick={onBack}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#4ade80",
+              cursor: "pointer",
+              fontFamily: "'Fira Code', monospace",
+              fontSize: "12px",
+            }}
+          >
+            ← Back
+          </button>
           <span className="chat-header-80m-title">SETTINGS</span>
           <span />
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Fira Code', monospace", color: '#555', fontSize: '12px' }}>Loading...</div>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "'Fira Code', monospace",
+            color: "#555",
+            fontSize: "12px",
+          }}
+        >
+          Loading...
+        </div>
       </div>
     );
   }
@@ -181,7 +233,22 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
   return (
     <div className="main-80m">
       <div className="chat-header-80m">
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#4ade80', cursor: 'pointer', fontFamily: "'Fira Code', monospace", fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>← Back</button>
+        <button
+          onClick={onBack}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#4ade80",
+            cursor: "pointer",
+            fontFamily: "'Fira Code', monospace",
+            fontSize: "12px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          ← Back
+        </button>
         <span className="chat-header-80m-title">SETTINGS</span>
         <span />
       </div>
@@ -190,7 +257,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            className={`settings-80m-tab${activeTab === tab.id ? ' active' : ''}`}
+            className={`settings-80m-tab${activeTab === tab.id ? " active" : ""}`}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.icon}
@@ -201,7 +268,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
 
       <div className="settings-80m-content">
         <AnimatePresence mode="wait">
-          {activeTab === 'connection' && (
+          {activeTab === "connection" && (
             <motion.div
               key="connection"
               initial={{ opacity: 0, y: 8 }}
@@ -212,27 +279,43 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
             >
               <div className="settings-80m-field">
                 <label className="settings-80m-label">Mode</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: "flex", gap: "8px" }}>
                   <button
-                    onClick={() => setConnMode('local')}
+                    onClick={() => setConnMode("local")}
                     style={{
-                      padding: '8px 16px', borderRadius: '8px',
-                      border: `1px solid ${connMode === 'local' ? '#4ade80' : 'rgba(74,222,128,0.15)'}`,
-                      background: connMode === 'local' ? 'rgba(74,222,128,0.1)' : 'transparent',
-                      color: connMode === 'local' ? '#4ade80' : '#666',
-                      fontFamily: "'Fira Code', monospace", fontSize: '11px', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      border: `1px solid ${connMode === "local" ? "#4ade80" : "rgba(74,222,128,0.15)"}`,
+                      background:
+                        connMode === "local"
+                          ? "rgba(74,222,128,0.1)"
+                          : "transparent",
+                      color: connMode === "local" ? "#4ade80" : "#666",
+                      fontFamily: "'Fira Code', monospace",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textTransform: "uppercase",
                     }}
                   >
                     <Wifi size={12} style={{ marginRight: 4 }} /> Local
                   </button>
                   <button
-                    onClick={() => setConnMode('remote')}
+                    onClick={() => setConnMode("remote")}
                     style={{
-                      padding: '8px 16px', borderRadius: '8px',
-                      border: `1px solid ${connMode === 'remote' ? '#4ade80' : 'rgba(74,222,128,0.15)'}`,
-                      background: connMode === 'remote' ? 'rgba(74,222,128,0.1)' : 'transparent',
-                      color: connMode === 'remote' ? '#4ade80' : '#666',
-                      fontFamily: "'Fira Code', monospace", fontSize: '11px', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      border: `1px solid ${connMode === "remote" ? "#4ade80" : "rgba(74,222,128,0.15)"}`,
+                      background:
+                        connMode === "remote"
+                          ? "rgba(74,222,128,0.1)"
+                          : "transparent",
+                      color: connMode === "remote" ? "#4ade80" : "#666",
+                      fontFamily: "'Fira Code', monospace",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textTransform: "uppercase",
                     }}
                   >
                     <WifiOff size={12} style={{ marginRight: 4 }} /> Remote
@@ -240,7 +323,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                 </div>
               </div>
 
-              {connMode === 'remote' && (
+              {connMode === "remote" && (
                 <>
                   <div className="settings-80m-field">
                     <label className="settings-80m-label">Remote URL</label>
@@ -269,17 +352,25 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
 
               <div className="settings-80m-field">
                 <label className="settings-80m-label">Provider</label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {['openrouter', 'openai', 'anthropic', 'custom'].map((p) => (
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {["openrouter", "openai", "anthropic", "custom"].map((p) => (
                     <button
                       key={p}
                       onClick={() => setProvider(p)}
                       style={{
-                        padding: '8px 16px', borderRadius: '8px',
-                        border: `1px solid ${provider === p ? '#4ade80' : 'rgba(74,222,128,0.15)'}`,
-                        background: provider === p ? 'rgba(74,222,128,0.1)' : 'transparent',
-                        color: provider === p ? '#4ade80' : '#666',
-                        fontFamily: "'Fira Code', monospace", fontSize: '11px', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                        padding: "8px 16px",
+                        borderRadius: "8px",
+                        border: `1px solid ${provider === p ? "#4ade80" : "rgba(74,222,128,0.15)"}`,
+                        background:
+                          provider === p
+                            ? "rgba(74,222,128,0.1)"
+                            : "transparent",
+                        color: provider === p ? "#4ade80" : "#666",
+                        fontFamily: "'Fira Code', monospace",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        textTransform: "uppercase",
                       }}
                     >
                       {p}
@@ -310,16 +401,13 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                 />
               </div>
 
-              <button
-                onClick={handleSave}
-                className="settings-80m-save-btn"
-              >
-                {saved ? 'SAVED ✓' : 'SAVE CONFIG'}
+              <button onClick={handleSave} className="settings-80m-save-btn">
+                {saved ? "SAVED ✓" : "SAVE CONFIG"}
               </button>
             </motion.div>
           )}
 
-          {activeTab === 'profiles' && (
+          {activeTab === "profiles" && (
             <motion.div
               key="profiles"
               initial={{ opacity: 0, y: 8 }}
@@ -330,7 +418,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
             >
               <div className="settings-80m-field">
                 <label className="settings-80m-label">Create Profile</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: "flex", gap: "8px" }}>
                   <input
                     type="text"
                     value={profileName}
@@ -338,15 +426,17 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                     placeholder="Profile name"
                     className="settings-80m-input"
                     style={{ flex: 1 }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreateProfile()}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleCreateProfile()
+                    }
                   />
                   <button
                     onClick={handleCreateProfile}
                     disabled={creatingProfile || !profileName.trim()}
                     className="settings-80m-save-btn"
-                    style={{ whiteSpace: 'nowrap' }}
+                    style={{ whiteSpace: "nowrap" }}
                   >
-                    {creatingProfile ? 'CREATING...' : 'CREATE'}
+                    {creatingProfile ? "CREATING..." : "CREATE"}
                   </button>
                 </div>
               </div>
@@ -355,13 +445,29 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
 
               <div className="settings-80m-profiles-list">
                 {profiles.length === 0 ? (
-                  <p style={{ color: '#555', fontFamily: "'Fira Code', monospace", fontSize: '12px', textAlign: 'center', padding: '20px' }}>No profiles yet</p>
+                  <p
+                    style={{
+                      color: "#555",
+                      fontFamily: "'Fira Code', monospace",
+                      fontSize: "12px",
+                      textAlign: "center",
+                      padding: "20px",
+                    }}
+                  >
+                    No profiles yet
+                  </p>
                 ) : (
                   profiles.map((profile) => (
                     <div key={profile.id} className="settings-80m-profile-card">
                       <div className="settings-80m-profile-info">
-                        <span className="settings-80m-profile-name">{profile.name}</span>
-                        {profile.isActive && <span className="settings-80m-profile-badge">ACTIVE</span>}
+                        <span className="settings-80m-profile-name">
+                          {profile.name}
+                        </span>
+                        {profile.isActive && (
+                          <span className="settings-80m-profile-badge">
+                            ACTIVE
+                          </span>
+                        )}
                       </div>
                       <div className="settings-80m-profile-actions">
                         {!profile.isActive && (
@@ -386,7 +492,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
             </motion.div>
           )}
 
-          {activeTab === 'backup' && (
+          {activeTab === "backup" && (
             <motion.div
               key="backup"
               initial={{ opacity: 0, y: 8 }}
@@ -397,18 +503,35 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
             >
               <div className="settings-80m-field">
                 <label className="settings-80m-label">Hermes Backup</label>
-                <p style={{ color: '#666', fontFamily: "'Fira Code', monospace", fontSize: '11px', marginBottom: '12px' }}>
-                  Export all Hermes data including sessions, memory, skills, and configuration.
+                <p
+                  style={{
+                    color: "#666",
+                    fontFamily: "'Fira Code', monospace",
+                    fontSize: "11px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  Export all Hermes data including sessions, memory, skills, and
+                  configuration.
                 </p>
                 <button
                   onClick={handleBackup}
                   disabled={backingUp}
                   className="settings-80m-save-btn"
                 >
-                  {backingUp ? 'BACKING UP...' : <><Download size={13} style={{ marginRight: 6 }} />RUN BACKUP</>}
+                  {backingUp ? (
+                    "BACKING UP..."
+                  ) : (
+                    <>
+                      <Download size={13} style={{ marginRight: 6 }} />
+                      RUN BACKUP
+                    </>
+                  )}
                 </button>
                 {backupResult && (
-                  <div className={`settings-80m-result ${backupResult.startsWith('Error') ? 'error' : 'success'}`}>
+                  <div
+                    className={`settings-80m-result ${backupResult.startsWith("Error") ? "error" : "success"}`}
+                  >
                     {backupResult}
                   </div>
                 )}
@@ -418,19 +541,36 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
 
               <div className="settings-80m-field">
                 <label className="settings-80m-label">Restore / Import</label>
-                <p style={{ color: '#666', fontFamily: "'Fira Code', monospace", fontSize: '11px', marginBottom: '12px' }}>
-                  Restore from a previous Hermes backup. This will merge with existing data.
+                <p
+                  style={{
+                    color: "#666",
+                    fontFamily: "'Fira Code', monospace",
+                    fontSize: "11px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  Restore from a previous Hermes backup. This will merge with
+                  existing data.
                 </p>
                 <button
                   onClick={handleImport}
                   disabled={importing}
                   className="settings-80m-save-btn"
-                  style={{ background: '#3b82f6' }}
+                  style={{ background: "#3b82f6" }}
                 >
-                  {importing ? 'IMPORTING...' : <><Upload size={13} style={{ marginRight: 6 }} />RUN IMPORT</>}
+                  {importing ? (
+                    "IMPORTING..."
+                  ) : (
+                    <>
+                      <Upload size={13} style={{ marginRight: 6 }} />
+                      RUN IMPORT
+                    </>
+                  )}
                 </button>
                 {importResult && (
-                  <div className={`settings-80m-result ${importResult.startsWith('Error') ? 'error' : 'success'}`}>
+                  <div
+                    className={`settings-80m-result ${importResult.startsWith("Error") ? "error" : "success"}`}
+                  >
                     {importResult}
                   </div>
                 )}
@@ -438,7 +578,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
             </motion.div>
           )}
 
-          {activeTab === 'about' && (
+          {activeTab === "about" && (
             <motion.div
               key="about"
               initial={{ opacity: 0, y: 8 }}
@@ -448,20 +588,27 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
               className="settings-80m-section"
             >
               <div className="settings-80m-about">
-                <div className="settings-80m-about-logo">80<span>M</span></div>
+                <div className="settings-80m-about-logo">
+                  80<span>M</span>
+                </div>
                 <p className="settings-80m-about-tagline">Agent Desktop</p>
                 <div className="settings-80m-about-versions">
                   <div className="settings-80m-about-version">
                     <span className="settings-80m-label">Desktop App</span>
-                    <span className="settings-80m-version-value">v{appVersion || '0.3.0'}</span>
+                    <span className="settings-80m-version-value">
+                      v{appVersion || "0.3.0"}
+                    </span>
                   </div>
                   <div className="settings-80m-about-version">
                     <span className="settings-80m-label">Hermes Engine</span>
-                    <span className="settings-80m-version-value">{hermesVersion || 'Unknown'}</span>
+                    <span className="settings-80m-version-value">
+                      {hermesVersion || "Unknown"}
+                    </span>
                   </div>
                 </div>
                 <p className="settings-80m-about-desc">
-                  80m Agent Desktop — A brutalist dark UI for the Hermes multi-agent system.
+                  80m Agent Desktop — A brutalist dark UI for the Hermes
+                  multi-agent system.
                 </p>
               </div>
             </motion.div>

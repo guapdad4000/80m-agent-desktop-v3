@@ -250,7 +250,9 @@ function Sessions({
             <div className="sessions-empty">
               <Search size={32} className="sessions-empty-icon" />
               <p className="sessions-empty-text">{t("sessions.noResults")}</p>
-              <p className="sessions-empty-hint">{t("sessions.noResultsHint")}</p>
+              <p className="sessions-empty-hint">
+                {t("sessions.noResultsHint")}
+              </p>
             </div>
           ) : (
             <div className="sessions-list">
@@ -279,7 +281,10 @@ function Sessions({
                       {r.source}
                     </span>
                     <span className="sessions-tag">
-                      {r.messageCount} {r.messageCount !== 1 ? t("sessions.messages") : t("sessions.messageSingular")}
+                      {r.messageCount}{" "}
+                      {r.messageCount !== 1
+                        ? t("sessions.messages")
+                        : t("sessions.messageSingular")}
                     </span>
                     {r.model && (
                       <span className="sessions-tag sessions-tag--model">
@@ -301,7 +306,9 @@ function Sessions({
           <div className="sessions-list">
             {grouped.map((group) => (
               <div key={group.label} className="sessions-group">
-                <div className="sessions-group-label">{t(`sessions.${group.label}`)}</div>
+                <div className="sessions-group-label">
+                  {t(`sessions.${group.label}`)}
+                </div>
                 {group.sessions.map((s) => (
                   <SessionCard
                     key={s.id}
