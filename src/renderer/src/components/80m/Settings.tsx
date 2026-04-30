@@ -10,6 +10,7 @@ import {
   WifiOff,
   Info,
 } from "lucide-react";
+import Animated80MLogo from "../Animated80MLogo";
 
 interface Props {
   onBack: () => void;
@@ -1046,9 +1047,7 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
               className="settings-80m-section"
             >
               <div className="settings-80m-about">
-                <div className="settings-80m-about-logo">
-                  80<span>M</span>
-                </div>
+                <Animated80MLogo className="animated-80m-logo-about" />
                 <p className="settings-80m-about-tagline">Agent Desktop</p>
                 <div className="settings-80m-about-versions">
                   <div className="settings-80m-about-version">
@@ -1065,8 +1064,8 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
                   </div>
                 </div>
                 <p className="settings-80m-about-desc">
-                  80m Agent Desktop — A brutalist dark UI for the Hermes
-                  multi-agent system.
+                  Agent Desktop — A brutalist dark UI for the Hermes multi-agent
+                  system.
                 </p>
               </div>
             </motion.div>
@@ -1260,16 +1259,6 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
           gap: 16px;
           padding: 32px;
           text-align: center;
-        }
-        .settings-80m-about-logo {
-          font-family: 'Fira Code', monospace;
-          font-size: 48px;
-          font-weight: 900;
-          color: #e8e8e8;
-          letter-spacing: -2px;
-        }
-        .settings-80m-about-logo span {
-          color: #4ade80;
         }
         .settings-80m-about-tagline {
           font-family: 'Fira Code', monospace;

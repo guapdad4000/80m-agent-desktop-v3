@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import Animated80MLogo from "../Animated80MLogo";
 
 export interface Message {
   id: string;
@@ -387,7 +388,8 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
     <div className="messages-80m">
       {messages.length === 0 && !isLoading && (
         <div className="welcome-empty-80m">
-          <h2>80M AGENT CONTROL</h2>
+          <Animated80MLogo className="animated-80m-logo-welcome" />
+          <h2>AGENT CONTROL</h2>
           <p>Send a message to start a session with your agent.</p>
         </div>
       )}

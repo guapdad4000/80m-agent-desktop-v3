@@ -19,7 +19,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ status }) => {
         gap: "24px",
       }}
     >
-      <Animated80MLogo />
+      <Animated80MLogo className="animated-80m-logo-loading" />
       <div
         style={{
           fontFamily: "'Fira Code', monospace",
@@ -30,7 +30,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ status }) => {
           textTransform: "uppercase",
         }}
       >
-        80M AGENT DESKTOP
+        AGENT DESKTOP
       </div>
       {/* Loading bar */}
       <div

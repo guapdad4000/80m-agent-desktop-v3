@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import AtmMascot from "../../components/80m/AtmMascot";
+import Animated80MLogo from "../../components/Animated80MLogo";
 import splashSound from "../../splash-sound.mp3";
 
 interface Props {
@@ -30,9 +31,7 @@ export default function SplashScreen({ onFinished }: Props): React.JSX.Element {
         <div className="impact-ring-2" />
         <div className="impact-ring-3" />
         <div className="splash-80m-branding">
-          <div className="splash-80m-branding-logo">
-            80<span>M</span>
-          </div>
+          <Animated80MLogo className="animated-80m-logo-splash" />
           <div className="splash-80m-branding-tagline">Agent Control</div>
         </div>
       </div>
