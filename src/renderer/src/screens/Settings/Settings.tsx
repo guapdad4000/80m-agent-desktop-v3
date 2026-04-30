@@ -4,6 +4,23 @@ import { SETTINGS_SECTIONS, PROVIDERS, THEME_OPTIONS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import { Download, Upload, FileText } from "lucide-react";
 
+interface CredentialEntry {
+  [key: string]: unknown;
+  key?: string;
+  access_token?: string;
+  api_key?: string;
+  label?: string;
+  auth_type?: string;
+  source?: string;
+  last_status?: string;
+  request_count?: number;
+  priority?: number;
+  selected?: boolean;
+  current?: boolean;
+}
+
+type CredentialPool = Record<string, CredentialEntry[]>;
+
 // Read cached values from localStorage for instant display
 function getCachedVersion(): string | null {
   try {
@@ -20,6 +37,60 @@ function getCachedOpenClaw(): { found: boolean; path: string | null } | null {
   } catch {
     return null;
   }
+}
+
+function credentialSecret(entry: CredentialEntry): string {
+  return entry.key || entry.access_token || entry.api_key || "";
+}
+
+function maskCredential(entry: CredentialEntry): string {
+  const value = credentialSecret(entry);
+  if (!value) return "No secret";
+  if (value.length <= 12) return "Saved";
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function hasEnv(env: Record<string, string>, key: string): boolean {
+  return Boolean(env[key]?.trim());
+}
+
+function hasCredential(pool: CredentialPool, provider: string): boolean {
+  return (pool[provider] || []).length > 0;
+}
+
+function modelConfigIssue(
+  provider: string,
+  model: string,
+  baseUrl: string,
+  env: Record<string, string>,
+  pool: CredentialPool,
+): string | null {
+  if (!model.trim()) return "Choose a model before saving.";
+  if (provider === "custom" && !baseUrl.trim()) {
+    return "Custom providers need a base URL.";
+  }
+  if (provider === "minimax" && !hasEnv(env, "MINIMAX_API_KEY")) {
+    return "MiniMax API mode needs MINIMAX_API_KEY saved in Hermes.";
+  }
+  if (provider === "minimax-cn" && !hasEnv(env, "MINIMAX_CN_API_KEY")) {
+    return "MiniMax CN mode needs MINIMAX_CN_API_KEY saved in Hermes.";
+  }
+  if (provider === "minimax-oauth" && !hasCredential(pool, "minimax-oauth")) {
+    return "MiniMax OAuth mode needs a saved MiniMax OAuth credential from hermes model.";
+  }
+  if (provider === "nous" && !hasCredential(pool, "nous")) {
+    return "Nous Portal mode needs a saved Nous credential from hermes auth or hermes model.";
+  }
+  if (
+    provider === "openai-codex" &&
+    !hasCredential(pool, "openai-codex")
+  ) {
+    return "OpenAI Codex mode needs a saved Codex OAuth credential from hermes model.";
+  }
+  if (provider === "alibaba" && !hasEnv(env, "DASHSCOPE_API_KEY")) {
+    return "Qwen DashScope mode needs DASHSCOPE_API_KEY saved in Hermes.";
+  }
+  return null;
 }
 
 function Settings({
@@ -73,6 +144,7 @@ function Settings({
   const [modelName, setModelName] = useState("");
   const [modelBaseUrl, setModelBaseUrl] = useState("");
   const [modelSaved, setModelSaved] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const modelLoaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -85,9 +157,7 @@ function Settings({
   const connLoaded = useRef(false);
 
   // Credential pool state
-  const [credPool, setCredPool] = useState<
-    Record<string, Array<{ key: string; label: string }>>
-  >({});
+  const [credPool, setCredPool] = useState<CredentialPool>({});
   const [poolProvider, setPoolProvider] = useState("");
   const [poolNewKey, setPoolNewKey] = useState("");
   const [poolNewLabel, setPoolNewLabel] = useState("");
@@ -196,6 +266,18 @@ function Settings({
   // Auto-save model config when values change (debounced)
   const saveModelConfig = useCallback(async () => {
     if (!modelLoaded.current) return;
+    const issue = modelConfigIssue(
+      modelProvider,
+      modelName,
+      modelBaseUrl,
+      env,
+      credPool,
+    );
+    if (issue) {
+      setModelError(issue);
+      return;
+    }
+    setModelError(null);
     await window.hermesAPI.setModelConfig(
       modelProvider,
       modelName,
@@ -214,7 +296,7 @@ function Settings({
     }
     setModelSaved(true);
     setTimeout(() => setModelSaved(false), 2000);
-  }, [modelProvider, modelName, modelBaseUrl, profile]);
+  }, [modelProvider, modelName, modelBaseUrl, env, credPool, profile]);
 
   useEffect(() => {
     if (!modelLoaded.current) return;
@@ -246,6 +328,8 @@ function Settings({
       {
         key: poolNewKey.trim(),
         label: poolNewLabel.trim() || `Key ${existing.length + 1}`,
+        auth_type: "api_key",
+        source: "manual",
       },
     ];
     await window.hermesAPI.setCredentialPool(poolProvider, entries);
@@ -295,7 +379,9 @@ function Settings({
       }
     } catch (err) {
       cleanup();
-      setMigrationResult((err as Error).message || t("settings.migrationFailed"));
+      setMigrationResult(
+        (err as Error).message || t("settings.migrationFailed"),
+      );
       setMigrationResultType("error");
     }
     setMigrating(false);
@@ -535,7 +621,9 @@ function Settings({
               onClick={handleDoctor}
               disabled={doctorRunning}
             >
-              {doctorRunning ? t("settings.runningDiagnosis") : t("settings.runDiagnosis")}
+              {doctorRunning
+                ? t("settings.runningDiagnosis")
+                : t("settings.runDiagnosis")}
             </button>
             <button
               className="btn btn-secondary"
@@ -578,7 +666,9 @@ function Settings({
         </div>
 
         <div className="settings-field">
-          <label className="settings-field-label">{t("settings.connectionMode")}</label>
+          <label className="settings-field-label">
+            {t("settings.connectionMode")}
+          </label>
           <div className="settings-theme-options">
             <button
               className={`settings-theme-option ${connMode === "local" ? "active" : ""}`}
@@ -606,7 +696,9 @@ function Settings({
         {connMode === "remote" && (
           <>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.remoteUrl")}</label>
+              <label className="settings-field-label">
+                {t("settings.remoteUrl")}
+              </label>
               <input
                 className="input"
                 type="url"
@@ -620,7 +712,9 @@ function Settings({
               </div>
             </div>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.remoteApiKey")}</label>
+              <label className="settings-field-label">
+                {t("settings.remoteApiKey")}
+              </label>
               <input
                 className="input"
                 type="password"
@@ -639,7 +733,9 @@ function Settings({
                 onClick={handleTestConnection}
                 disabled={connTesting}
               >
-                {connTesting ? t("settings.testingConnection") : t("settings.testConnection")}
+                {connTesting
+                  ? t("settings.testingConnection")
+                  : t("settings.testConnection")}
               </button>
               <button
                 className="btn btn-primary"
@@ -659,7 +755,14 @@ function Settings({
               <div className="settings-migration-title">
                 {t("settings.migrationDetected")}
               </div>
-              <div className="settings-migration-desc" dangerouslySetInnerHTML={{ __html: t("settings.migrationDesc", { path: openclawPath || "" }) }} />
+              <div
+                className="settings-migration-desc"
+                dangerouslySetInnerHTML={{
+                  __html: t("settings.migrationDesc", {
+                    path: openclawPath || "",
+                  }),
+                }}
+              />
             </div>
             <button
               className="btn-ghost settings-migration-dismiss"
@@ -687,7 +790,9 @@ function Settings({
               onClick={handleMigrate}
               disabled={migrating}
             >
-              {migrating ? t("settings.migrating") : t("settings.migrateToHermes")}
+              {migrating
+                ? t("settings.migrating")
+                : t("settings.migrateToHermes")}
             </button>
             <button
               className="btn btn-secondary "
@@ -722,7 +827,9 @@ function Settings({
               </button>
             ))}
           </div>
-          <div className="settings-field-hint">{t("settings.appearanceHint")}</div>
+          <div className="settings-field-hint">
+            {t("settings.appearanceHint")}
+          </div>
         </div>
       </div>
 
@@ -765,7 +872,9 @@ function Settings({
           </div>
         </div>
         <div className="settings-field">
-          <label className="settings-field-label">{t("settings.httpProxy")}</label>
+          <label className="settings-field-label">
+            {t("settings.httpProxy")}
+          </label>
           <input
             className="input"
             type="text"
@@ -790,166 +899,198 @@ function Settings({
 
       {connMode === "remote" && (
         <div className="settings-section">
-          <div className="settings-section-title">{t("settings.serverConfigTitle")}</div>
-          <div className="settings-field-hint" dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }} />
+          <div className="settings-section-title">
+            {t("settings.serverConfigTitle")}
+          </div>
+          <div
+            className="settings-field-hint"
+            dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }}
+          />
         </div>
       )}
 
       {connMode === "local" && (
-      <div className="settings-section">
-        <div className="settings-section-title">
-          {t("common.model")}
-          {modelSaved && (
-            <span className="settings-saved" style={{ marginLeft: 8 }}>
-              {t("common.saved")}
-            </span>
-          )}
-        </div>
-
-        <div className="settings-field">
-          <label className="settings-field-label">{t("common.provider")}</label>
-          <select
-            className="input settings-select"
-            value={modelProvider}
-            onChange={(e) => {
-              const v = e.target.value;
-              setModelProvider(v);
-              if (v === "custom" && !modelBaseUrl) {
-                setModelBaseUrl("http://localhost:1234/v1");
-              }
-            }}
-          >
-            {PROVIDERS.options.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {t(opt.label)}
-              </option>
-            ))}
-          </select>
-          <div className="settings-field-hint">
-            {isCustomProvider
-              ? t("settings.customProviderHint")
-              : t("settings.providerHint")}
+        <div className="settings-section">
+          <div className="settings-section-title">
+            {t("common.model")}
+            {modelSaved && (
+              <span className="settings-saved" style={{ marginLeft: 8 }}>
+                {t("common.saved")}
+              </span>
+            )}
           </div>
-        </div>
 
-        <div className="settings-field">
-          <label className="settings-field-label">{t("common.model")}</label>
-          <input
-            className="input"
-            type="text"
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-            placeholder={t("settings.modelNamePlaceholder")}
-          />
-          <div className="settings-field-hint">
-            {t("settings.modelHint")}
-          </div>
-        </div>
-
-        {isCustomProvider && (
           <div className="settings-field">
             <label className="settings-field-label">
-              {t("common.baseUrl")}
+              {t("common.provider")}
             </label>
+            <select
+              className="input settings-select"
+              value={modelProvider}
+              onChange={(e) => {
+                const v = e.target.value;
+                setModelProvider(v);
+                if (v === "custom" && !modelBaseUrl) {
+                  setModelBaseUrl("http://localhost:1234/v1");
+                }
+                if (v === "minimax-oauth") {
+                  setModelName("MiniMax-M2.7");
+                  setModelBaseUrl("https://api.minimax.io/anthropic");
+                }
+                setModelError(null);
+              }}
+            >
+              {PROVIDERS.options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {t(opt.label)}
+                </option>
+              ))}
+            </select>
+            <div className="settings-field-hint">
+              {isCustomProvider
+                ? t("settings.customProviderHint")
+                : t("settings.providerHint")}
+            </div>
+          </div>
+
+          <div className="settings-field">
+            <label className="settings-field-label">{t("common.model")}</label>
             <input
               className="input"
               type="text"
-              value={modelBaseUrl}
-              onChange={(e) => setModelBaseUrl(e.target.value)}
-              placeholder={t("settings.modelBaseUrlPlaceholder")}
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              placeholder={t("settings.modelNamePlaceholder")}
             />
-            <div className="settings-field-hint">{t("settings.customBaseUrlHint")}</div>
+            <div className="settings-field-hint">{t("settings.modelHint")}</div>
+            {modelError && <div className="models-error">{modelError}</div>}
           </div>
-        )}
-      </div>
+
+          {(isCustomProvider || modelProvider === "minimax-oauth") && (
+            <div className="settings-field">
+              <label className="settings-field-label">
+                {t("common.baseUrl")}
+              </label>
+              <input
+                className="input"
+                type="text"
+                value={modelBaseUrl}
+                onChange={(e) => setModelBaseUrl(e.target.value)}
+                placeholder={t("settings.modelBaseUrlPlaceholder")}
+              />
+              <div className="settings-field-hint">
+                {t("settings.customBaseUrlHint")}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {connMode === "local" && (
-      <div className="settings-section">
-        <div className="settings-section-title">
-          {t("settings.sections.credentialPool")}
-        </div>
-        <div className="settings-field">
-          <div className="settings-field-hint" style={{ marginBottom: 10 }}>
-            {t("settings.poolHint")}
+        <div className="settings-section">
+          <div className="settings-section-title">
+            {t("settings.sections.credentialPool")}
           </div>
-          <div className="settings-pool-add">
-            <select
-              className="input"
-              value={poolProvider}
-              onChange={(e) => setPoolProvider(e.target.value)}
-              style={{ width: 140 }}
-            >
-              <option value="">{t("common.provider")}</option>
-              {PROVIDERS.options
-                .filter((p) => p.value !== "auto")
-                .map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {t(p.label)}
-                  </option>
-                ))}
-            </select>
-            <input
-              className="input"
-              type="password"
-              value={poolNewKey}
-              onChange={(e) => setPoolNewKey(e.target.value)}
-              placeholder={t("settings.apiKeyPlaceholder")}
-              style={{ flex: 1 }}
-            />
-            <input
-              className="input"
-              type="text"
-              value={poolNewLabel}
-              onChange={(e) => setPoolNewLabel(e.target.value)}
-              placeholder={t("settings.labelPlaceholder", { optional: t("common.optional") })}
-              style={{ width: 120 }}
-            />
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={handleAddPoolKey}
-              disabled={!poolProvider || !poolNewKey.trim()}
-            >
-              {t("settings.add")}
-            </button>
-          </div>
-          {Object.entries(credPool).map(
-            ([provider, entries]) =>
-              entries.length > 0 && (
-                <div key={provider} className="settings-pool-group">
-                  <div className="settings-pool-provider">
-                    {PROVIDERS.options.find((p) => p.value === provider)
-                      ? t(PROVIDERS.options.find((p) => p.value === provider)!.label)
-                      : provider}
-                  </div>
-                  {entries.map((entry, idx) => (
-                    <div key={idx} className="settings-pool-entry">
-                      <span className="settings-pool-label">
-                        {entry.label || `${t("settings.keyLabel")} ${idx + 1}`}
-                      </span>
-                      <span className="settings-pool-key">
-                        {entry.key
-                          ? `${entry.key.slice(0, 8)}...${entry.key.slice(-4)}`
-                          : t("settings.empty")}
-                      </span>
-                      <button
-                        className="btn-ghost"
-                        style={{ color: "var(--error)", fontSize: 11 }}
-                        onClick={() => handleRemovePoolKey(provider, idx)}
-                      >
-                        {t("settings.remove")}
-                      </button>
-                    </div>
+          <div className="settings-field">
+            <div className="settings-field-hint" style={{ marginBottom: 10 }}>
+              {t("settings.poolHint")}
+            </div>
+            <div className="settings-pool-add">
+              <select
+                className="input"
+                value={poolProvider}
+                onChange={(e) => setPoolProvider(e.target.value)}
+                style={{ width: 140 }}
+              >
+                <option value="">{t("common.provider")}</option>
+                {PROVIDERS.options
+                  .filter((p) => p.value !== "auto")
+                  .map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {t(p.label)}
+                    </option>
                   ))}
-                </div>
-              ),
-          )}
+              </select>
+              <input
+                className="input"
+                type="password"
+                value={poolNewKey}
+                onChange={(e) => setPoolNewKey(e.target.value)}
+                placeholder={t("settings.apiKeyPlaceholder")}
+                style={{ flex: 1 }}
+              />
+              <input
+                className="input"
+                type="text"
+                value={poolNewLabel}
+                onChange={(e) => setPoolNewLabel(e.target.value)}
+                placeholder={t("settings.labelPlaceholder", {
+                  optional: t("common.optional"),
+                })}
+                style={{ width: 120 }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleAddPoolKey}
+                disabled={!poolProvider || !poolNewKey.trim()}
+              >
+                {t("settings.add")}
+              </button>
+            </div>
+            {Object.entries(credPool).map(
+              ([provider, entries]) =>
+                entries.length > 0 && (
+                  <div key={provider} className="settings-pool-group">
+                    <div className="settings-pool-provider">
+                      {PROVIDERS.options.find((p) => p.value === provider)
+                        ? t(
+                            PROVIDERS.options.find((p) => p.value === provider)!
+                              .label,
+                          )
+                        : provider}
+                    </div>
+                    {entries.map((entry, idx) => (
+                      <div key={idx} className="settings-pool-entry">
+                        <span className="settings-pool-label">
+                          {entry.label ||
+                            `${t("settings.keyLabel")} ${idx + 1}`}
+                        </span>
+                        <span className="settings-pool-key">
+                          {maskCredential(entry)}
+                        </span>
+                        <span className="settings-pool-meta">
+                          {[
+                            entry.auth_type || "api_key",
+                            entry.source,
+                            entry.last_status,
+                            typeof entry.request_count === "number"
+                              ? `${entry.request_count} req`
+                              : "",
+                            entry.selected || entry.current ? "selected" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                        <button
+                          className="btn-ghost"
+                          style={{ color: "var(--error)", fontSize: 11 }}
+                          onClick={() => handleRemovePoolKey(provider, idx)}
+                        >
+                          {t("settings.remove")}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ),
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       <div className="settings-section">
-        <div className="settings-section-title">{t("settings.dataSection")}</div>
+        <div className="settings-section-title">
+          {t("settings.dataSection")}
+        </div>
         <div className="settings-field">
           <div className="settings-field-hint" style={{ marginBottom: 10 }}>
             {t("settings.dataHint")}

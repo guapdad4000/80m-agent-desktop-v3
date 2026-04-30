@@ -1,15 +1,78 @@
 import {
   app,
-  shell,
   BrowserWindow,
   ipcMain,
   Menu,
   Notification,
+  dialog,
+  shell,
 } from "electron";
 import { join } from "path";
+import http from "http";
+import https from "https";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
+
+/** Allowlist: only http, https, and mailto URLs for security. */
+function safeOpenExternal(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
+      shell.openExternal(url);
+    }
+  } catch {
+    // invalid URL — silently ignore
+  }
+}
+
+function checkApiHealth(
+  url: string,
+  apiKey?: string,
+): Promise<{ ok: boolean; status: number | null; error?: string }> {
+  return new Promise((resolve) => {
+    try {
+      const healthUrl = new URL("/health", url);
+      const mod = healthUrl.protocol === "https:" ? https : http;
+      const req = mod.request(
+        healthUrl,
+        {
+          method: "GET",
+          timeout: 2500,
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        },
+        (res) => {
+          res.resume();
+          resolve({
+            ok: res.statusCode === 200,
+            status: res.statusCode || null,
+          });
+        },
+      );
+      req.on("error", (error) =>
+        resolve({ ok: false, status: null, error: error.message }),
+      );
+      req.on("timeout", () => {
+        req.destroy();
+        resolve({ ok: false, status: null, error: "timeout" });
+      });
+      req.end();
+    } catch (error) {
+      resolve({
+        ok: false,
+        status: null,
+        error: error instanceof Error ? error.message : "invalid URL",
+      });
+    }
+  });
+}
+
+import {
+  startBrowserService,
+  stopBrowserService,
+  navigateTo,
+  getBrowserState,
+} from "./playwright";
 import {
   checkInstallStatus,
   runInstall,
@@ -26,7 +89,9 @@ import {
   discoverMemoryProviders,
   readLogs,
   InstallProgress,
+  HERMES_HOME,
 } from "./installer";
+import * as fs from "fs";
 import {
   sendMessage,
   startGateway,
@@ -74,7 +139,13 @@ import {
   listCachedSessions,
   updateSessionTitle,
 } from "./session-cache";
-import { listModels, addModel, removeModel, updateModel } from "./models";
+import {
+  listModels,
+  listModelCatalog,
+  addModel,
+  removeModel,
+  updateModel,
+} from "./models";
 import {
   listProfiles,
   createProfile,
@@ -130,11 +201,13 @@ function createWindow(): void {
     ...(process.platform === "darwin"
       ? { trafficLightPosition: { x: 16, y: 16 } }
       : {}),
+    title: "80m Agent Desktop",
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
       webviewTag: true,
+      autoplayPolicy: "no-user-gesture-required",
     },
   });
 
@@ -167,7 +240,7 @@ function createWindow(): void {
   );
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    safeOpenExternal(details.url);
     return { action: "deny" };
   });
 
@@ -302,12 +375,7 @@ function setupIPC(): void {
 
   ipcMain.handle(
     "set-connection-config",
-    (
-      _event,
-      mode: "local" | "remote",
-      remoteUrl: string,
-      apiKey?: string,
-    ) => {
+    (_event, mode: "local" | "remote", remoteUrl: string, apiKey?: string) => {
       setConnectionConfig({ mode, remoteUrl, apiKey: apiKey || "" });
       return true;
     },
@@ -315,9 +383,52 @@ function setupIPC(): void {
 
   ipcMain.handle(
     "test-remote-connection",
-    (_event, url: string, apiKey?: string) =>
-      testRemoteConnection(url, apiKey),
+    (_event, url: string, apiKey?: string) => testRemoteConnection(url, apiKey),
   );
+
+  ipcMain.handle("get-hermes-health", async (_event, profile?: string) => {
+    const install = checkInstallStatus();
+    const connection = getConnectionConfig();
+    const model = getModelConfig(profile);
+    const env = readEnv(profile);
+    const credentials = getCredentialPool();
+    const credentialProviders = Object.entries(credentials)
+      .filter(([, entries]) => entries.length > 0)
+      .map(([provider, entries]) => ({ provider, count: entries.length }));
+    const apiUrl =
+      connection.mode === "remote" && connection.remoteUrl
+        ? connection.remoteUrl
+        : "http://127.0.0.1:8642";
+    const apiKey =
+      connection.mode === "remote" ? connection.apiKey : env.API_SERVER_KEY;
+    const api = await checkApiHealth(apiUrl, apiKey);
+
+    return {
+      install,
+      connection: {
+        mode: connection.mode,
+        remoteUrl: connection.remoteUrl,
+        hasRemoteApiKey: Boolean(connection.apiKey),
+      },
+      gateway: {
+        running: isGatewayRunning(),
+        apiUrl,
+        apiOk: api.ok,
+        apiStatus: api.status,
+        apiError: api.error || "",
+        hasApiServerKey: Boolean(env.API_SERVER_KEY),
+      },
+      model,
+      env: {
+        hasMiniMaxKey: Boolean(env.MINIMAX_API_KEY),
+        hasMiniMaxCnKey: Boolean(env.MINIMAX_CN_API_KEY),
+        hasOpenAIKey: Boolean(env.OPENAI_API_KEY),
+        hasXaiKey: Boolean(env.XAI_API_KEY),
+        hasDashScopeKey: Boolean(env.DASHSCOPE_API_KEY),
+      },
+      credentialProviders,
+    };
+  });
 
   // Chat — lazy-start gateway on first message
   ipcMain.handle(
@@ -328,6 +439,7 @@ function setupIPC(): void {
       profile?: string,
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
+      activeProject?: string | null,
     ) => {
       if (!isRemoteMode() && !isGatewayRunning()) {
         startGateway(profile);
@@ -370,7 +482,7 @@ function setupIPC(): void {
                 .trim()
                 .slice(0, 80);
               new Notification({
-                title: "Hermes Agent",
+                title: "80m Agent",
                 body: preview || "Response ready",
               }).show();
             }
@@ -382,7 +494,7 @@ function setupIPC(): void {
             // Notify on error too if window not focused
             if (mainWindow && !mainWindow.isFocused()) {
               new Notification({
-                title: "Hermes Agent — Error",
+                title: "80m Agent — Error",
                 body: error.slice(0, 100),
               }).show();
             }
@@ -397,6 +509,7 @@ function setupIPC(): void {
         profile,
         resumeSessionId,
         history,
+        activeProject,
       );
 
       currentChatAbort = handle.abort;
@@ -410,6 +523,38 @@ function setupIPC(): void {
       currentChatAbort = null;
     }
   });
+
+  ipcMain.handle("open-local-path", async (_event, targetPath: string) => {
+    if (!targetPath || !fs.existsSync(targetPath)) return false;
+    const error = await shell.openPath(targetPath);
+    return !error;
+  });
+
+  ipcMain.handle("reveal-local-path", (_event, targetPath: string) => {
+    if (!targetPath || !fs.existsSync(targetPath)) return false;
+    shell.showItemInFolder(targetPath);
+    return true;
+  });
+
+  // File Sandbox
+  ipcMain.handle(
+    "copy-file-to-workspace",
+    async (_event, sourcePath: string) => {
+      try {
+        const cacheDir = join(HERMES_HOME, "cache");
+        if (!fs.existsSync(cacheDir)) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        const filename = require("path").basename(sourcePath);
+        const destPath = join(cacheDir, filename);
+        await fs.promises.copyFile(sourcePath, destPath);
+        return destPath;
+      } catch (err) {
+        console.error("Failed to copy file to workspace:", err);
+        return null;
+      }
+    },
+  );
 
   // Gateway
   ipcMain.handle("start-gateway", () => startGateway());
@@ -434,6 +579,39 @@ function setupIPC(): void {
       return true;
     },
   );
+
+  // Projects Sidebar IPC
+  ipcMain.handle("select-project-directory", async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ["openDirectory"],
+      title: "Select Project Directory",
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return null;
+  });
+
+  ipcMain.handle("read-directory", (_, dirPath) => {
+    try {
+      if (!fs.existsSync(dirPath)) return [];
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      return entries
+        .map((e) => ({
+          name: e.name,
+          isDirectory: e.isDirectory(),
+          path: join(dirPath, e.name),
+        }))
+        .sort((a, b) => {
+          // Directories first
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
+    } catch (e) {
+      return [];
+    }
+  });
 
   // Sessions
   ipcMain.handle("list-sessions", (_event, limit?: number, offset?: number) => {
@@ -553,6 +731,7 @@ function setupIPC(): void {
 
   // Models
   ipcMain.handle("list-models", () => listModels());
+  ipcMain.handle("list-model-catalog", () => listModelCatalog());
   ipcMain.handle(
     "add-model",
     (_event, name: string, provider: string, model: string, baseUrl: string) =>
@@ -641,7 +820,7 @@ function setupIPC(): void {
 
   // Shell
   ipcMain.handle("open-external", (_event, url: string) => {
-    shell.openExternal(url);
+    safeOpenExternal(url);
   });
 
   // Backup / Import
@@ -671,6 +850,17 @@ function setupIPC(): void {
   ipcMain.handle("read-logs", (_event, logFile?: string, lines?: number) =>
     readLogs(logFile, lines),
   );
+
+  // Playwright
+  ipcMain.handle("start-browser", () => {
+    if (mainWindow) {
+      return startBrowserService(mainWindow);
+    }
+    return Promise.resolve();
+  });
+  ipcMain.handle("stop-browser", () => stopBrowserService());
+  ipcMain.handle("navigate-browser", (_event, url: string) => navigateTo(url));
+  ipcMain.handle("get-browser-state", () => getBrowserState());
 }
 
 function buildMenu(): void {
@@ -758,15 +948,19 @@ function buildMenu(): void {
       label: "Help",
       submenu: [
         {
-          label: "Hermes Agent on GitHub",
+          label: "80m Agent on GitHub",
           click: (): void => {
-            shell.openExternal("https://github.com/fathah/Hermes-Agent");
+            safeOpenExternal(
+              "https://github.com/guapdad4000/80m-agent-desktop",
+            );
           },
         },
         {
           label: "Report an Issue",
           click: (): void => {
-            shell.openExternal("https://github.com/fathah/Hermes-Agent/issues");
+            safeOpenExternal(
+              "https://github.com/guapdad4000/80m-agent-desktop/issues",
+            );
           },
         },
       ],
@@ -876,4 +1070,5 @@ app.on("before-quit", () => {
   }
   stopGateway();
   stopClaw3d();
+  stopBrowserService();
 });

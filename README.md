@@ -1,77 +1,65 @@
-<img width="100%" alt="HERMES DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
+<img width="100%" alt="80M AGENT DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
 
 <br/>
 <p align="center">
-  <a href="https://hermes-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-hermes--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
+  <a href="https://github.com/guapdad4000/80m-agent-desktop/releases/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
   <a href="https://discord.gg/NousResearch"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://github.com/fathah/hermes-desktop/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://github.com/fathah/hermes-desktop/releases/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
+  <a href="https://github.com/guapdad4000/80m-agent-desktop/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
 </p>
 
-> **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
+> **80m Agent Desktop** is a native desktop application for installing, configuring, and chatting with Hermes Agent — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop. Download the latest release for macOS, Linux, or Windows below.
 
 ## Languages
 
 - English: `README.md`
 - 简体中文: `README.zh-CN.md`
 
-Hermes Desktop is a native desktop app for installing, configuring, and chatting with [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
-
-Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
-
 ## Install
 
-Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
+Download the latest build from the [Releases](https://github.com/guapdad4000/80m-agent-desktop/releases/) page.
 
 | Platform | File                  |
 | -------- | --------------------- |
+| Windows  | `.exe`                |
 | macOS    | `.dmg`                |
 | Linux    | `.AppImage` or `.deb` |
 
 > **macOS users:** The app is not code-signed or notarized. macOS will block it on first launch. To fix this, run the following after installing:
 >
 > ```bash
-> xattr -cr "/Applications/Hermes Agent.app"
+> xattr -cr "/Applications/80m Agent Desktop.app"
 > ```
 >
 > Or right-click the app → **Open** → click **Open** in the confirmation dialog.
 
-## Features
+## What You Get
 
 - **Guided first-run install** for Hermes Agent with progress tracking and dependency resolution
 - **Multi-provider support** — OpenRouter, Anthropic, OpenAI, Google (Gemini), xAI (Grok), Nous Portal, Qwen, MiniMax, Hugging Face, Groq, and local OpenAI-compatible endpoints (LM Studio, Ollama, vLLM, llama.cpp)
 - **Streaming chat UI** with SSE streaming, tool progress indicators, markdown rendering, and syntax highlighting
-- **Token usage tracking** — live prompt/completion token counts and cost display in the chat footer, plus a `/usage` slash command
-- **22 slash commands** — `/new`, `/clear`, `/fast`, `/web`, `/image`, `/browse`, `/code`, `/shell`, `/usage`, `/help`, `/tools`, `/skills`, `/model`, `/memory`, `/persona`, `/version`, `/compact`, `/compress`, `/undo`, `/retry`, `/debug`, `/status`, and more
+- **Token usage tracking** — live prompt/completion token counts and cost display in the chat footer
 - **Session management** — full-text search (SQLite FTS5), date-grouped history, resume and search across conversations
 - **Profile switching** — create, delete, and switch between separate Hermes environments with isolated config
-- **14 toolsets** — web, browser, terminal, file, code execution, vision, image gen, TTS, skills, memory, session search, clarify, delegation, MoA, and task planning
-- **Memory system** — view/edit memory entries, user profile memory, capacity tracking, and discoverable memory providers (Honcho, Hindsight, Mem0, RetainDB, Supermemory, ByteRover)
+- **14 toolsets** — web, browser, terminal, file, code execution, vision, image gen, TTS, skills, memory, session search, delegation, MoA, and task planning
+- **Memory system** — view/edit memory entries, user profile memory, capacity tracking, and discoverable memory providers
 - **Persona editor** — edit and reset your agent's SOUL.md personality
 - **Saved models** — CRUD management for model configurations across providers
-- **Scheduled tasks** — cron job builder (minutes, hourly, daily, weekly, custom cron) with 15 delivery targets
-- **16 messaging gateways** — Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email (IMAP/SMTP), SMS (Twilio/Vonage), iMessage (BlueBubbles), DingTalk, Feishu/Lark, WeCom, WeChat (iLink Bot), Webhooks, Home Assistant
-- **Hermes Office (Claw3d)** — visual 3D interface with dev server and adapter management
-- **Backup, import & debug dump** — full data backup/restore and system diagnostics from Settings
-- **Log viewer** — view gateway and agent logs directly from the Settings screen
-- **Auto-updater** — check for and install updates via electron-updater
-- **i18n ready** — internationalization framework with English locale covering all screens, ready for community translations
-- **Test suite** — SSE parser, IPC handlers, preload API surface, installer utilities, and constants validation with Vitest
+- **Scheduled tasks** — cron job builder with 15 delivery targets
+- **16 messaging gateways** — Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email (IMAP/SMTP), SMS, iMessage, DingTalk, Feishu/Lark, WeCom, WeChat, Webhooks, Home Assistant
+- **Backup & import** — full data backup/restore from Settings
+- **Auto-updater** — check for and install updates automatically
+- **i18n ready** — internationalization framework with English and Simplified Chinese locales
 
 ## Preview
 
 <table>
 <tr>
-<td width="50%" align="center"><b>Office</b><br/><img width="100%" alt="Office" src="https://github.com/user-attachments/assets/214bfa60-48ec-4449-be40-370628205147" /></td>
 <td width="50%" align="center"><b>Chat</b><br/><img width="100%" alt="Chat" src="https://github.com/user-attachments/assets/ca84a56c-4d14-4775-96bb-c725069988be" /></td>
-</tr>
-<tr>
 <td width="50%" align="center"><b>Profiles</b><br/><img width="100%" alt="Profiles" src="https://github.com/user-attachments/assets/bd812e4a-bbdc-4141-b3a8-1ab5b0e561d4" /></td>
-<td width="50%" align="center"><b>Tools</b><br/><img width="100%" alt="Tools" src="https://github.com/user-attachments/assets/ad051fbe-055d-40d2-b6dd-959c522412d2" /></td>
 </tr>
 <tr>
+<td width="50%" align="center"><b>Tools</b><br/><img width="100%" alt="Tools" src="https://github.com/user-attachments/assets/ad051fbe-055d-40d2-b6dd-959c522412d2" /></td>
 <td width="50%" align="center"><b>Settings</b><br/><img width="100%" alt="Settings" src="https://github.com/user-attachments/assets/b3f7e0d8-b087-4935-b57c-f8db30491f2e" /></td>
-<td width="50%" align="center"><b>Skills</b><br/><img width="100%" alt="Skills" src="https://github.com/user-attachments/assets/508c3501-52eb-419d-8cfd-06268875ff62" /></td>
 </tr>
 </table>
 
@@ -91,7 +79,7 @@ Chat requests go through a local API server (`http://127.0.0.1:8642`) with SSE s
 
 | Screen | Description |
 |--------|-------------|
-| **Chat** | Streaming conversation UI with slash commands, tool progress, and token tracking |
+| **Chat** | Streaming conversation UI with tool progress and token tracking |
 | **Sessions** | Browse, search, and resume past conversations |
 | **Agents** | Create, delete, and switch between Hermes profiles |
 | **Skills** | Browse, install, and manage bundled and installed skills |
@@ -101,7 +89,6 @@ Chat requests go through a local API server (`http://127.0.0.1:8642`) with SSE s
 | **Tools** | Enable or disable individual toolsets |
 | **Schedules** | Create and manage cron jobs with delivery targets |
 | **Gateway** | Configure and control messaging platform integrations |
-| **Office** | Claw3d visual interface setup and management |
 | **Settings** | Provider config, credential pools, backup/import, log viewer, network settings, theme |
 
 ## Supported Providers
@@ -119,25 +106,21 @@ Chat requests go through a local API server (`http://127.0.0.1:8642`) with SSE s
 | **Qwen** | QwenAI models |
 | **MiniMax** | Global and China endpoints |
 | **Hugging Face** | 20+ open models via HF Inference |
-| **Groq** | Fast inference (voice/STT) |
+| **Groq** | Fast inference |
 | **Local/Custom** | Any OpenAI-compatible endpoint |
 
 Local presets are included for LM Studio, Ollama, vLLM, and llama.cpp.
 
 ### Messaging Platforms
 
-Telegram, Discord, Slack, WhatsApp, Signal, Matrix/Element, Mattermost, Email (IMAP/SMTP), SMS (Twilio & Vonage), iMessage (BlueBubbles), DingTalk, Feishu/Lark, WeCom, WeChat (iLink Bot), Webhooks, and Home Assistant.
-
-### Tool Integrations
-
-Exa Search, Parallel API, Tavily, Firecrawl, FAL.ai (image generation), Honcho, Browserbase, Weights & Biases, and Tinker.
+Telegram, Discord, Slack, WhatsApp, Signal, Matrix/Element, Mattermost, Email (IMAP/SMTP), SMS (Twilio & Vonage), iMessage (BlueBubbles), DingTalk, Feishu/Lark, WeCom, WeChat, Webhooks, and Home Assistant.
 
 ## Development
 
 ### Prerequisites
 
 - Node.js and npm
-- A Unix-like shell environment for the Hermes installer
+- A Unix-like shell environment for the Hermes installer (Linux/macOS; Windows via WSL or Git Bash)
 - Network access for downloading Hermes during first-run install
 
 ### Install dependencies
@@ -191,12 +174,7 @@ Supported setup paths in the UI:
 - `OpenAI`
 - `Local LLM` via an OpenAI-compatible base URL
 
-Local presets are included for:
-
-- LM Studio
-- Ollama
-- vLLM
-- llama.cpp
+Local presets are included for: LM Studio, Ollama, vLLM, llama.cpp.
 
 Hermes files are managed in:
 
@@ -219,19 +197,10 @@ Hermes files are managed in:
 - **i18next** — internationalization framework
 - **Vitest** — test runner
 
-## Notes
-
-- The desktop app depends on the upstream Hermes Agent project for agent behavior and tool execution.
-- The built-in installer runs the official Hermes install script with `--skip-setup`, then completes provider configuration in the GUI.
-- Local model providers do not require an API key, but the compatible server must already be running.
-- Alternative npm registry routes are supported for environments with restricted network access.
-
 ## Contributing
 
-Contributions are welcome! Check out the [Contributing Guide](CONTRIBUTING.md) to get started. If you're not sure where to begin, take a look at the [open issues](https://github.com/NousResearch/hermes-desktop/issues). Found a bug or have a feature request? [File an issue](https://github.com/NousResearch/hermes-desktop/issues/new).
+Contributions are welcome! Check out the [Contributing Guide](CONTRIBUTING.md) to get started. If you're not sure where to begin, take a look at the [open issues](https://github.com/guapdad4000/80m-agent-desktop/issues). Found a bug or have a feature request? [File an issue](https://github.com/guapdad4000/80m-agent-desktop/issues/new).
 
-## Related Project
+## Legal
 
-For the core agent, docs, and CLI workflows, see the main Hermes Agent repository:
-
-- https://github.com/NousResearch/hermes-agent
+**80m Agent Desktop** is a desktop interface built on top of [Hermes Agent](https://github.com/NousResearch/hermes-agent) by [Nous Research](https://nousresearch.com). The desktop app is licensed MIT. Hermes Agent is a separate open-source project with its own license.

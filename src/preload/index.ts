@@ -104,6 +104,8 @@ const hermesAPI = {
 
   testRemoteConnection: (url: string, apiKey?: string): Promise<boolean> =>
     ipcRenderer.invoke("test-remote-connection", url, apiKey),
+  getHermesHealth: (profile?: string): Promise<unknown> =>
+    ipcRenderer.invoke("get-hermes-health", profile),
 
   // Chat
   sendMessage: (
@@ -111,6 +113,7 @@ const hermesAPI = {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    activeProject?: string | null,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -118,9 +121,14 @@ const hermesAPI = {
       profile,
       resumeSessionId,
       history,
+      activeProject,
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+  openLocalPath: (path: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-local-path", path),
+  revealLocalPath: (path: string): Promise<boolean> =>
+    ipcRenderer.invoke("reveal-local-path", path),
 
   onChatChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
@@ -214,9 +222,11 @@ const hermesAPI = {
   ): Promise<
     Array<{
       id: number;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "tool";
       content: string;
       timestamp: number;
+      tool_calls?: string;
+      tool_name?: string;
     }>
   > => ipcRenderer.invoke("get-session-messages", sessionId),
 
@@ -246,6 +256,15 @@ const hermesAPI = {
     name: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("delete-profile", name),
+
+  // Projects Sidebar
+  selectProjectDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke("select-project-directory"),
+
+  readDirectory: (
+    dirPath: string,
+  ): Promise<Array<{ name: string; isDirectory: boolean; path: string }>> =>
+    ipcRenderer.invoke("read-directory", dirPath),
 
   setActiveProfile: (name: string): Promise<boolean> =>
     ipcRenderer.invoke("set-active-profile", name),
@@ -374,11 +393,11 @@ const hermesAPI = {
 
   // Credential Pool
   getCredentialPool: (): Promise<
-    Record<string, Array<{ key: string; label: string }>>
+    Record<string, Array<Record<string, unknown>>>
   > => ipcRenderer.invoke("get-credential-pool"),
   setCredentialPool: (
     provider: string,
-    entries: Array<{ key: string; label: string }>,
+    entries: Array<Record<string, unknown>>,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-credential-pool", provider, entries),
 
@@ -393,6 +412,17 @@ const hermesAPI = {
       createdAt: number;
     }>
   > => ipcRenderer.invoke("list-models"),
+
+  listModelCatalog: (): Promise<
+    Array<{
+      provider: string;
+      model: string;
+      name: string;
+      description: string;
+      baseUrl: string;
+      source: "catalog" | "fallback";
+    }>
+  > => ipcRenderer.invoke("list-model-catalog"),
 
   addModel: (
     name: string,
@@ -630,6 +660,24 @@ const hermesAPI = {
     lines?: number,
   ): Promise<{ content: string; path: string }> =>
     ipcRenderer.invoke("read-logs", logFile, lines),
+
+  // File Sandbox
+  copyFileToWorkspace: (sourcePath: string): Promise<string | null> =>
+    ipcRenderer.invoke("copy-file-to-workspace", sourcePath),
+
+  // Playwright
+  startBrowser: (): Promise<void> => ipcRenderer.invoke("start-browser"),
+  stopBrowser: (): Promise<void> => ipcRenderer.invoke("stop-browser"),
+  navigateBrowser: (url: string): Promise<void> =>
+    ipcRenderer.invoke("navigate-browser", url),
+  getBrowserState: (): Promise<{ url: string } | null> =>
+    ipcRenderer.invoke("get-browser-state"),
+  onPlaywrightNavigated: (callback: (url: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, url: string): void =>
+      callback(url);
+    ipcRenderer.on("playwright-navigated", handler);
+    return () => ipcRenderer.removeListener("playwright-navigated", handler);
+  },
 };
 
 if (process.contextIsolated) {

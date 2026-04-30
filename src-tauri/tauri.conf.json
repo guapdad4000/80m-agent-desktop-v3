@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "80m Agent Desktop",
+  "version": "0.8.0",
+  "identifier": "com.80m.agent-desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev:tauri-ui",
+    "beforeBuildCommand": "npm run build:tauri-ui",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../out/tauri-renderer"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "80m Agent Desktop",
+        "width": 1100,
+        "height": 750,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["appimage", "deb"],
+    "icon": ["../resources/icon.png"]
+  }
+}

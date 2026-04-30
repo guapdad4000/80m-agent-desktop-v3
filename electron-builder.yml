@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: hermes-agent
+  executableName: 80m-agent-desktop
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -35,7 +35,7 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: 80M
   category: Utility
   executableName: 80m-agent-desktop
 appImage:
@@ -43,5 +43,5 @@ appImage:
 npmRebuild: false
 publish:
   provider: github
-  owner: fathah
-  repo: hermes-desktop
+  owner: guapdad4000
+  repo: 80m-agent-desktop

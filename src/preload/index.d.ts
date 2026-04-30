@@ -15,6 +15,36 @@ interface InstallProgress {
   log: string;
 }
 
+interface HermesHealth {
+  install: InstallStatus;
+  connection: {
+    mode: "local" | "remote";
+    remoteUrl: string;
+    hasRemoteApiKey: boolean;
+  };
+  gateway: {
+    running: boolean;
+    apiUrl: string;
+    apiOk: boolean;
+    apiStatus: number | null;
+    apiError: string;
+    hasApiServerKey: boolean;
+  };
+  model: {
+    provider: string;
+    model: string;
+    baseUrl: string;
+  };
+  env: {
+    hasMiniMaxKey: boolean;
+    hasMiniMaxCnKey: boolean;
+    hasOpenAIKey: boolean;
+    hasXaiKey: boolean;
+    hasDashScopeKey: boolean;
+  };
+  credentialProviders: Array<{ provider: string; count: number }>;
+}
+
 interface HermesAPI {
   // Installation
   checkInstall: () => Promise<InstallStatus>;
@@ -30,7 +60,7 @@ interface HermesAPI {
   runHermesUpdate: () => Promise<{ success: boolean; error?: string }>;
 
   // OpenClaw migration
-  checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>; 
+  checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
 
   getLocale: () => Promise<"en" | "zh-CN">;
@@ -65,6 +95,7 @@ interface HermesAPI {
     apiKey?: string,
   ) => Promise<boolean>;
   testRemoteConnection: (url: string, apiKey?: string) => Promise<boolean>;
+  getHermesHealth: (profile?: string) => Promise<HermesHealth>;
 
   // Chat
   sendMessage: (
@@ -72,8 +103,11 @@ interface HermesAPI {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    activeProject?: string | null,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  openLocalPath: (path: string) => Promise<boolean>;
+  revealLocalPath: (path: string) => Promise<boolean>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
   onChatToolProgress: (callback: (tool: string) => void) => () => void;
@@ -121,9 +155,11 @@ interface HermesAPI {
   getSessionMessages: (sessionId: string) => Promise<
     Array<{
       id: number;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "tool";
       content: string;
       timestamp: number;
+      tool_calls?: string;
+      tool_name?: string;
     }>
   >;
 
@@ -150,6 +186,12 @@ interface HermesAPI {
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
   setActiveProfile: (name: string) => Promise<boolean>;
+
+  // Projects Sidebar
+  selectProjectDirectory: () => Promise<string | null>;
+  readDirectory: (
+    dirPath: string,
+  ) => Promise<Array<{ name: string; isDirectory: boolean; path: string }>>;
 
   // Memory
   readMemory: (profile?: string) => Promise<{
@@ -259,11 +301,11 @@ interface HermesAPI {
 
   // Credential Pool
   getCredentialPool: () => Promise<
-    Record<string, Array<{ key: string; label: string }>>
+    Record<string, Array<Record<string, unknown>>>
   >;
   setCredentialPool: (
     provider: string,
-    entries: Array<{ key: string; label: string }>,
+    entries: Array<Record<string, unknown>>,
   ) => Promise<boolean>;
 
   // Models
@@ -275,6 +317,16 @@ interface HermesAPI {
       model: string;
       baseUrl: string;
       createdAt: number;
+    }>
+  >;
+  listModelCatalog: () => Promise<
+    Array<{
+      provider: string;
+      model: string;
+      name: string;
+      description: string;
+      baseUrl: string;
+      source: "catalog" | "fallback";
     }>
   >;
   addModel: (
@@ -428,6 +480,14 @@ interface HermesAPI {
     logFile?: string,
     lines?: number,
   ) => Promise<{ content: string; path: string }>;
+
+  // Playwright browser control
+  copyFileToWorkspace: (sourcePath: string) => Promise<string | null>;
+  startBrowser: () => Promise<void>;
+  stopBrowser: () => Promise<void>;
+  navigateBrowser: (url: string) => Promise<void>;
+  getBrowserState: () => Promise<{ url: string } | null>;
+  onPlaywrightNavigated: (callback: (url: string) => void) => () => void;
 }
 
 declare global {

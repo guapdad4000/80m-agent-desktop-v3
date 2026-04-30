@@ -21,6 +21,8 @@ export interface SessionMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   timestamp: number;
+  tool_calls?: string;
+  tool_name?: string;
 }
 
 export interface SearchResult {
@@ -157,9 +159,9 @@ export function getSessionMessages(sessionId: string): SessionMessage[] {
   try {
     const rows = db
       .prepare(
-        `SELECT id, role, content, timestamp
+        `SELECT id, role, content, timestamp, tool_calls, tool_name
          FROM messages
-         WHERE session_id = ? AND role IN ('user', 'assistant') AND content IS NOT NULL
+         WHERE session_id = ? AND (content IS NOT NULL OR tool_calls IS NOT NULL)
          ORDER BY timestamp, id`,
       )
       .all(sessionId) as Array<{
@@ -167,13 +169,17 @@ export function getSessionMessages(sessionId: string): SessionMessage[] {
       role: string;
       content: string;
       timestamp: number;
+      tool_calls: string | null;
+      tool_name: string | null;
     }>;
 
     return rows.map((r) => ({
       id: r.id,
-      role: r.role as "user" | "assistant",
-      content: r.content,
+      role: r.role as "user" | "assistant" | "tool",
+      content: r.content || "",
       timestamp: r.timestamp,
+      tool_calls: r.tool_calls || undefined,
+      tool_name: r.tool_name || undefined,
     }));
   } finally {
     db.close();

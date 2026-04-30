@@ -199,121 +199,132 @@ function Sessions({
   const grouped = groupSessions(sessions);
 
   return (
-    <div className="sessions-container">
-      {/* Header with integrated search */}
-      <div className="sessions-header">
-        <div className="sessions-header-top">
-          <h2 className="sessions-title">{t("sessions.title")}</h2>
-          <button className="btn btn-primary " onClick={onNewChat}>
-            <Plus size={14} />
-            {t("sessions.newChat")}
-          </button>
-        </div>
-        <div className="sessions-searchbar">
-          <Search size={14} className="sessions-searchbar-icon" />
-          <input
-            ref={searchRef}
-            className="sessions-searchbar-input"
-            type="text"
-            placeholder={t("sessions.searchPlaceholder")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button
-              className="btn-ghost sessions-searchbar-clear"
-              onClick={() => {
-                setSearchQuery("");
-                searchRef.current?.focus();
-              }}
-            >
-              <X size={13} />
-            </button>
-          )}
-        </div>
+    <div className="main-80m">
+      <div className="screen-header-80m">
+        <span className="screen-header-80m-title">SESSIONS</span>
       </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="sessions-loading">
-          <div className="loading-spinner" />
+      <div className="screen-content-80m">
+        {/* Header with integrated search */}
+        <div className="sessions-header">
+          <div className="sessions-header-top">
+            <button className="btn btn-primary " onClick={onNewChat}>
+              <Plus size={14} />
+              {t("sessions.newChat")}
+            </button>
+          </div>
+          <div className="sessions-searchbar">
+            <Search size={14} className="sessions-searchbar-icon" />
+            <input
+              ref={searchRef}
+              className="sessions-searchbar-input"
+              type="text"
+              placeholder={t("sessions.searchPlaceholder")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                className="btn-ghost sessions-searchbar-clear"
+                onClick={() => {
+                  setSearchQuery("");
+                  searchRef.current?.focus();
+                }}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
-      ) : isShowingSearch ? (
-        isSearching ? (
+
+        {/* Content */}
+        {loading ? (
           <div className="sessions-loading">
             <div className="loading-spinner" />
           </div>
-        ) : searchResults.length === 0 ? (
+        ) : isShowingSearch ? (
+          isSearching ? (
+            <div className="sessions-loading">
+              <div className="loading-spinner" />
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="sessions-empty">
+              <Search size={32} className="sessions-empty-icon" />
+              <p className="sessions-empty-text">{t("sessions.noResults")}</p>
+              <p className="sessions-empty-hint">
+                {t("sessions.noResultsHint")}
+              </p>
+            </div>
+          ) : (
+            <div className="sessions-list">
+              {searchResults.map((r) => (
+                <button
+                  key={r.sessionId}
+                  className={`sessions-card ${currentSessionId === r.sessionId ? "sessions-card--active" : ""}`}
+                  onClick={() => onResumeSession(r.sessionId)}
+                >
+                  <div className="sessions-card-main">
+                    <span className="sessions-card-title">
+                      {r.title ||
+                        `${t("sessions.title")} ${r.sessionId.slice(-6)}`}
+                    </span>
+                    <span className="sessions-card-time">
+                      {formatFullDate(r.startedAt)}
+                    </span>
+                  </div>
+                  {r.snippet && (
+                    <div className="sessions-result-snippet">
+                      {highlightSnippet(r.snippet)}
+                    </div>
+                  )}
+                  <div className="sessions-card-tags">
+                    <span className="sessions-tag sessions-tag--source">
+                      {r.source}
+                    </span>
+                    <span className="sessions-tag">
+                      {r.messageCount}{" "}
+                      {r.messageCount !== 1
+                        ? t("sessions.messages")
+                        : t("sessions.messageSingular")}
+                    </span>
+                    {r.model && (
+                      <span className="sessions-tag sessions-tag--model">
+                        {formatModel(r.model)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )
+        ) : sessions.length === 0 ? (
           <div className="sessions-empty">
-            <Search size={32} className="sessions-empty-icon" />
-            <p className="sessions-empty-text">{t("sessions.noResults")}</p>
-            <p className="sessions-empty-hint">{t("sessions.noResultsHint")}</p>
+            <ChatBubble size={32} className="sessions-empty-icon" />
+            <p className="sessions-empty-text">{t("sessions.empty")}</p>
+            <p className="sessions-empty-hint">{t("sessions.emptyHint")}</p>
           </div>
         ) : (
           <div className="sessions-list">
-            {searchResults.map((r) => (
-              <button
-                key={r.sessionId}
-                className={`sessions-card ${currentSessionId === r.sessionId ? "sessions-card--active" : ""}`}
-                onClick={() => onResumeSession(r.sessionId)}
-              >
-                <div className="sessions-card-main">
-                  <span className="sessions-card-title">
-                    {r.title ||
-                      `${t("sessions.title")} ${r.sessionId.slice(-6)}`}
-                  </span>
-                  <span className="sessions-card-time">
-                    {formatFullDate(r.startedAt)}
-                  </span>
+            {grouped.map((group) => (
+              <div key={group.label} className="sessions-group">
+                <div className="sessions-group-label">
+                  {t(`sessions.${group.label}`)}
                 </div>
-                {r.snippet && (
-                  <div className="sessions-result-snippet">
-                    {highlightSnippet(r.snippet)}
-                  </div>
-                )}
-                <div className="sessions-card-tags">
-                  <span className="sessions-tag sessions-tag--source">
-                    {r.source}
-                  </span>
-                  <span className="sessions-tag">
-                    {r.messageCount} {r.messageCount !== 1 ? t("sessions.messages") : t("sessions.messageSingular")}
-                  </span>
-                  {r.model && (
-                    <span className="sessions-tag sessions-tag--model">
-                      {formatModel(r.model)}
-                    </span>
-                  )}
-                </div>
-              </button>
+                {group.sessions.map((s) => (
+                  <SessionCard
+                    key={s.id}
+                    session={s}
+                    isActive={currentSessionId === s.id}
+                    showFullDate={
+                      group.label === "thisWeek" || group.label === "earlier"
+                    }
+                    onClick={() => onResumeSession(s.id)}
+                  />
+                ))}
+              </div>
             ))}
           </div>
-        )
-      ) : sessions.length === 0 ? (
-        <div className="sessions-empty">
-          <ChatBubble size={32} className="sessions-empty-icon" />
-          <p className="sessions-empty-text">{t("sessions.empty")}</p>
-          <p className="sessions-empty-hint">{t("sessions.emptyHint")}</p>
-        </div>
-      ) : (
-        <div className="sessions-list">
-          {grouped.map((group) => (
-            <div key={group.label} className="sessions-group">
-              <div className="sessions-group-label">{t(`sessions.${group.label}`)}</div>
-              {group.sessions.map((s) => (
-                <SessionCard
-                  key={s.id}
-                  session={s}
-                  isActive={currentSessionId === s.id}
-                  showFullDate={
-                    group.label === "thisWeek" || group.label === "earlier"
-                  }
-                  onClick={() => onResumeSession(s.id)}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

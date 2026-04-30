@@ -27,6 +27,12 @@ pnpm-debug.log*
 
 # Electron packaging artifacts
 release/
+
+# Local runtime/test databases
+*.db
+*.db-shm
+*.db-wal
+
 .claude/worktrees
 
 # Tauri

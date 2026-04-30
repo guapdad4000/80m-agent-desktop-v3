@@ -81,7 +81,12 @@ export function checkInstallStatus(): InstallStatus {
   // Remote mode: skip local checks entirely
   const conn = getConnectionConfig();
   if (conn.mode === "remote" && conn.remoteUrl) {
-    return { installed: true, configured: true, hasApiKey: true, verified: true };
+    return {
+      installed: true,
+      configured: true,
+      hasApiKey: true,
+      verified: true,
+    };
   }
 
   const installed = existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT);
@@ -307,7 +312,7 @@ export async function runHermesUpdate(
     onProgress({
       step: 1,
       totalSteps: 1,
-      title: "Updating Hermes Agent",
+      title: "Updating 80m Agent",
       detail: text.trim().slice(0, 120),
       log,
     });
@@ -385,7 +390,7 @@ const STAGE_MARKERS: { pattern: RegExp; step: number; title: string }[] = [
   {
     pattern: /Cloning|cloning|Updating.*repository|Repository/i,
     step: 4,
-    title: "Downloading Hermes Agent",
+    title: "Downloading 80m Agent",
   },
   {
     pattern: /Creating virtual|virtual environment|venv/i,
@@ -648,20 +653,17 @@ export function discoverMemoryProviders(
     { description: string; envVars: string[]; pip?: string }
   > = {
     honcho: {
-      description:
-        "memory.providers.honcho",
+      description: "memory.providers.honcho",
       envVars: ["HONCHO_API_KEY"],
       pip: "honcho-ai",
     },
     hindsight: {
-      description:
-        "memory.providers.hindsight",
+      description: "memory.providers.hindsight",
       envVars: ["HINDSIGHT_API_KEY", "HINDSIGHT_API_URL", "HINDSIGHT_BANK_ID"],
       pip: "hindsight-client",
     },
     mem0: {
-      description:
-        "memory.providers.mem0",
+      description: "memory.providers.mem0",
       envVars: ["MEM0_API_KEY"],
       pip: "mem0ai",
     },
@@ -670,24 +672,20 @@ export function discoverMemoryProviders(
       envVars: ["RETAINDB_API_KEY"],
     },
     supermemory: {
-      description:
-        "memory.providers.supermemory",
+      description: "memory.providers.supermemory",
       envVars: ["SUPERMEMORY_API_KEY"],
       pip: "supermemory",
     },
     holographic: {
-      description:
-        "memory.providers.holographic",
+      description: "memory.providers.holographic",
       envVars: [],
     },
     openviking: {
-      description:
-        "memory.providers.openviking",
+      description: "memory.providers.openviking",
       envVars: ["OPENVIKING_ENDPOINT", "OPENVIKING_API_KEY"],
     },
     byterover: {
-      description:
-        "memory.providers.byterover",
+      description: "memory.providers.byterover",
       envVars: ["BRV_API_KEY"],
     },
   };
