@@ -32,7 +32,7 @@ const Layout80m: React.FC = () => {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>("default");
-  
+
   // Projects state
   const [activeProject, setActiveProject] = useState<string | null>(() => {
     return localStorage.getItem("hermes-active-project") || null;
@@ -49,7 +49,9 @@ const Layout80m: React.FC = () => {
 
   const handleFileClick = useCallback((path: string) => {
     // Inject file focus command via a custom event that InputBar / ChatArea can listen to
-    const ev = new CustomEvent("inject-chat", { detail: `[System: User opened file ${path}]` });
+    const ev = new CustomEvent("inject-chat", {
+      detail: `[System: User opened file ${path}]`,
+    });
     window.dispatchEvent(ev);
   }, []);
 
@@ -122,12 +124,21 @@ const Layout80m: React.FC = () => {
               onProjectChange={handleProjectChange}
               onFileClick={handleFileClick}
             />
-            <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                overflow: "hidden",
+                minWidth: 0,
+              }}
+            >
               <ChatArea
                 currentSession={currentSession}
                 onNewSession={handleNewSession}
                 onSessionChange={setCurrentSession}
-                profile={selectedAgent !== "default" ? selectedAgent : undefined}
+                profile={
+                  selectedAgent !== "default" ? selectedAgent : undefined
+                }
                 activeProject={activeProject}
               />
             </div>
@@ -174,7 +185,12 @@ const Layout80m: React.FC = () => {
       case "gateway":
         return wrap("GATEWAY", <Gateway />);
       case "settings":
-        return <Settings onBack={handleBackToChat} />;
+        return (
+          <Settings
+            onBack={handleBackToChat}
+            profile={selectedAgent !== "default" ? selectedAgent : undefined}
+          />
+        );
       case "models":
         return wrap("MODELS", <Models />);
       case "schedules":
@@ -238,15 +254,27 @@ const Layout80m: React.FC = () => {
         }}
       />
 
-      <AgentPreviewPanel isOpen={showPreview} onClose={() => setShowPreview(false)} />
+      <AgentPreviewPanel
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
 
       {!showPreview && (
-        <button 
+        <button
           className="preview-toggle-btn"
           onClick={() => setShowPreview(true)}
           title="Show Agent Browser Preview"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            width="18"
+            height="18"
+          >
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
             <circle cx="12" cy="12" r="3"></circle>
           </svg>

@@ -1,7 +1,15 @@
 import { ChildProcess, spawn } from "child_process";
-import { existsSync, readFileSync, appendFileSync, unlinkSync } from "fs";
+import {
+  existsSync,
+  readFileSync,
+  appendFileSync,
+  unlinkSync,
+  mkdirSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { randomBytes } from "crypto";
 import http from "http";
 import https from "https";
 import {
@@ -11,7 +19,13 @@ import {
   HERMES_SCRIPT,
   getEnhancedPath,
 } from "./installer";
-import { getModelConfig, readEnv, getConnectionConfig } from "./config";
+import {
+  getModelConfig,
+  readEnv,
+  setEnvValue,
+  getConnectionConfig,
+  getPlatformEnabled,
+} from "./config";
 import { stripAnsi } from "./utils";
 
 const LOCAL_API_URL = "http://127.0.0.1:8642";
@@ -34,6 +48,75 @@ function getRemoteAuthHeader(): Record<string, string> {
     return { Authorization: `Bearer ${conn.apiKey}` };
   }
   return {};
+}
+
+function getApiServerAuthHeader(profile?: string): Record<string, string> {
+  const remoteHeader = getRemoteAuthHeader();
+  if (remoteHeader.Authorization) return remoteHeader;
+
+  const conn = getConnectionConfig();
+  if (conn.mode === "local") {
+    const key = readEnv(profile).API_SERVER_KEY || process.env.API_SERVER_KEY;
+    if (key) return { Authorization: `Bearer ${key}` };
+  }
+
+  return {};
+}
+
+function ensureApiServerKey(profile?: string): string {
+  const existing =
+    readEnv(profile).API_SERVER_KEY || process.env.API_SERVER_KEY;
+  if (existing?.trim()) return existing.trim();
+
+  const key = `hsk_${randomBytes(24).toString("hex")}`;
+  setEnvValue("API_SERVER_KEY", key, profile);
+  return key;
+}
+
+const PLATFORM_ENV_KEYS: Record<string, string[]> = {
+  discord: [
+    "DISCORD_BOT_TOKEN",
+    "DISCORD_HOME_CHANNEL",
+    "DISCORD_HOME_CHANNEL_NAME",
+  ],
+  telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_HOME_CHANNEL"],
+  slack: ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_SIGNING_SECRET"],
+  whatsapp: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
+  signal: ["SIGNAL_PHONE_NUMBER"],
+};
+
+function ensureGatewayEnvShim(): string {
+  const shimDir = join(HERMES_HOME, "desktop-runtime");
+  const shimPath = join(shimDir, "sitecustomize.py");
+  if (!existsSync(shimDir)) {
+    mkdirSync(shimDir, { recursive: true });
+  }
+
+  writeFileSync(
+    shimPath,
+    [
+      '"""80m desktop gateway environment shim."""',
+      "import os",
+      "try:",
+      "    import dotenv",
+      "    _original_load_dotenv = dotenv.load_dotenv",
+      "    def _load_dotenv_without_disabled_platforms(*args, **kwargs):",
+      "        result = _original_load_dotenv(*args, **kwargs)",
+      "        disabled = os.getenv('HERMES_DESKTOP_DISABLED_ENV_KEYS', '')",
+      "        for key in disabled.split(','):",
+      "            key = key.strip()",
+      "            if key:",
+      "                os.environ.pop(key, None)",
+      "        return result",
+      "    dotenv.load_dotenv = _load_dotenv_without_disabled_platforms",
+      "except Exception:",
+      "    pass",
+      "",
+    ].join("\n"),
+    "utf-8",
+  );
+
+  return shimDir;
 }
 
 const LOCAL_PROVIDERS = new Set([
@@ -60,13 +143,17 @@ interface ChatHandle {
 //  API Server health check
 // ────────────────────────────────────────────────────
 
-function isApiServerReady(): Promise<boolean> {
+function isApiServerReady(profile?: string): Promise<boolean> {
   return new Promise((resolve) => {
     const url = `${getApiUrl()}/health`;
     const mod = url.startsWith("https") ? https : http;
     const req = mod.request(
       url,
-      { method: "GET", timeout: 1500, headers: getRemoteAuthHeader() },
+      {
+        method: "GET",
+        timeout: 1500,
+        headers: getApiServerAuthHeader(profile),
+      },
       (res) => {
         resolve(res.statusCode === 200);
         res.resume();
@@ -139,7 +226,7 @@ function sendMessageViaApi(
 
   // Build full conversation from history + current message (standard OpenAI format)
   const messages: Array<{ role: string; content: string }> = [];
-  
+
   if (activeProject) {
     messages.push({
       role: "system",
@@ -165,14 +252,18 @@ function sendMessageViaApi(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getRemoteAuthHeader(),
+    ...getApiServerAuthHeader(profile),
   };
 
-  // Include resume session ID so Hermes continues the correct conversation
+  // Include resume session ID only when the API server is authenticated.
+  // Hermes rejects continuation headers on unauthenticated local gateways.
   let sessionId = _resumeSessionId || "";
-  if (sessionId) {
+  if (sessionId && headers.Authorization) {
     headers["X-Hermes-Session-ID"] = sessionId;
+  } else if (sessionId) {
+    sessionId = "";
   }
+  const sentSessionHeader = Boolean(headers["X-Hermes-Session-ID"]);
   let hasContent = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
@@ -204,7 +295,7 @@ function sendMessageViaApi(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...getRemoteAuthHeader(),
+          ...getApiServerAuthHeader(profile),
         },
       },
       (res) => {
@@ -325,6 +416,24 @@ function sendMessageViaApi(
           errBody += d.toString();
         });
         res.on("end", () => {
+          if (
+            sentSessionHeader &&
+            (res.statusCode === 401 || res.statusCode === 403) &&
+            /session continuation|X-Hermes-Session|API key authentication/i.test(
+              errBody,
+            )
+          ) {
+            sendMessageViaApi(
+              message,
+              cb,
+              profile,
+              undefined,
+              history,
+              activeProject,
+            );
+            return;
+          }
+
           try {
             const err = JSON.parse(errBody);
             finish(err.error?.message || `API error ${res.statusCode}`);
@@ -422,7 +531,7 @@ function sendMessageViaCli(
   if (profile && profile !== "default") {
     args.push("-p", profile);
   }
-  
+
   let finalMessage = message;
   if (activeProject && !resumeSessionId) {
     // Inject system context as part of the first message
@@ -608,20 +717,40 @@ export async function sendMessage(
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId, history, activeProject);
+    return sendMessageViaApi(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+      activeProject,
+    );
   }
 
   // Check API server availability (cache the result, re-check periodically)
   if (apiServerAvailable === null || apiServerAvailable === false) {
-    apiServerAvailable = await isApiServerReady();
+    apiServerAvailable = await isApiServerReady(profile);
   }
 
   if (apiServerAvailable) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId, history, activeProject);
+    return sendMessageViaApi(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+      activeProject,
+    );
   }
 
   // Fallback to CLI
-  return sendMessageViaCli(message, cb, profile, resumeSessionId, activeProject);
+  return sendMessageViaCli(
+    message,
+    cb,
+    profile,
+    resumeSessionId,
+    activeProject,
+  );
 }
 
 // Lazy init — called on first sendMessage or gateway start
@@ -667,6 +796,8 @@ export function startGateway(profile?: string): boolean {
   ensureInitialized();
   if (isGatewayRunning()) return false;
 
+  const apiServerKey = ensureApiServerKey(profile);
+
   // Build gateway env with profile API keys
   const gatewayEnv: Record<string, string> = {
     ...(process.env as Record<string, string>),
@@ -674,11 +805,30 @@ export function startGateway(profile?: string): boolean {
     HOME: homedir(),
     HERMES_HOME: HERMES_HOME,
     API_SERVER_ENABLED: "true", // Ensure API server starts with gateway
+    API_SERVER_KEY: apiServerKey,
   };
 
   // Inject ALL profile API keys so the gateway can authenticate with any provider.
   const profileEnv = readEnv(profile);
+  const platformEnabled = getPlatformEnabled(profile);
+  const disabledPlatformKeys = new Set(
+    Object.entries(PLATFORM_ENV_KEYS)
+      .filter(([platform]) => !platformEnabled[platform])
+      .flatMap(([, keys]) => keys),
+  );
+  for (const key of disabledPlatformKeys) {
+    gatewayEnv[key] = "";
+  }
+  if (disabledPlatformKeys.size > 0) {
+    const shimDir = ensureGatewayEnvShim();
+    gatewayEnv.HERMES_DESKTOP_DISABLED_ENV_KEYS =
+      Array.from(disabledPlatformKeys).join(",");
+    gatewayEnv.PYTHONPATH = gatewayEnv.PYTHONPATH
+      ? `${shimDir}:${gatewayEnv.PYTHONPATH}`
+      : shimDir;
+  }
   for (const [key, value] of Object.entries(profileEnv)) {
+    if (disabledPlatformKeys.has(key)) continue;
     if (value) {
       gatewayEnv[key] = value;
     }
@@ -705,7 +855,7 @@ export function startGateway(profile?: string): boolean {
 
   // Wait a bit then check if API server came up
   setTimeout(async () => {
-    apiServerAvailable = await isApiServerReady();
+    apiServerAvailable = await isApiServerReady(profile);
   }, 3000);
 
   return true;

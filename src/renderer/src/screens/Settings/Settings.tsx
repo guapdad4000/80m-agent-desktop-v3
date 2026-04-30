@@ -4,6 +4,23 @@ import { SETTINGS_SECTIONS, PROVIDERS, THEME_OPTIONS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import { Download, Upload, FileText } from "lucide-react";
 
+interface CredentialEntry {
+  [key: string]: unknown;
+  key?: string;
+  access_token?: string;
+  api_key?: string;
+  label?: string;
+  auth_type?: string;
+  source?: string;
+  last_status?: string;
+  request_count?: number;
+  priority?: number;
+  selected?: boolean;
+  current?: boolean;
+}
+
+type CredentialPool = Record<string, CredentialEntry[]>;
+
 // Read cached values from localStorage for instant display
 function getCachedVersion(): string | null {
   try {
@@ -20,6 +37,60 @@ function getCachedOpenClaw(): { found: boolean; path: string | null } | null {
   } catch {
     return null;
   }
+}
+
+function credentialSecret(entry: CredentialEntry): string {
+  return entry.key || entry.access_token || entry.api_key || "";
+}
+
+function maskCredential(entry: CredentialEntry): string {
+  const value = credentialSecret(entry);
+  if (!value) return "No secret";
+  if (value.length <= 12) return "Saved";
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function hasEnv(env: Record<string, string>, key: string): boolean {
+  return Boolean(env[key]?.trim());
+}
+
+function hasCredential(pool: CredentialPool, provider: string): boolean {
+  return (pool[provider] || []).length > 0;
+}
+
+function modelConfigIssue(
+  provider: string,
+  model: string,
+  baseUrl: string,
+  env: Record<string, string>,
+  pool: CredentialPool,
+): string | null {
+  if (!model.trim()) return "Choose a model before saving.";
+  if (provider === "custom" && !baseUrl.trim()) {
+    return "Custom providers need a base URL.";
+  }
+  if (provider === "minimax" && !hasEnv(env, "MINIMAX_API_KEY")) {
+    return "MiniMax API mode needs MINIMAX_API_KEY saved in Hermes.";
+  }
+  if (provider === "minimax-cn" && !hasEnv(env, "MINIMAX_CN_API_KEY")) {
+    return "MiniMax CN mode needs MINIMAX_CN_API_KEY saved in Hermes.";
+  }
+  if (provider === "minimax-oauth" && !hasCredential(pool, "minimax-oauth")) {
+    return "MiniMax OAuth mode needs a saved MiniMax OAuth credential from hermes model.";
+  }
+  if (provider === "nous" && !hasCredential(pool, "nous")) {
+    return "Nous Portal mode needs a saved Nous credential from hermes auth or hermes model.";
+  }
+  if (
+    provider === "openai-codex" &&
+    !hasCredential(pool, "openai-codex")
+  ) {
+    return "OpenAI Codex mode needs a saved Codex OAuth credential from hermes model.";
+  }
+  if (provider === "alibaba" && !hasEnv(env, "DASHSCOPE_API_KEY")) {
+    return "Qwen DashScope mode needs DASHSCOPE_API_KEY saved in Hermes.";
+  }
+  return null;
 }
 
 function Settings({
@@ -73,6 +144,7 @@ function Settings({
   const [modelName, setModelName] = useState("");
   const [modelBaseUrl, setModelBaseUrl] = useState("");
   const [modelSaved, setModelSaved] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const modelLoaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -85,9 +157,7 @@ function Settings({
   const connLoaded = useRef(false);
 
   // Credential pool state
-  const [credPool, setCredPool] = useState<
-    Record<string, Array<{ key: string; label: string }>>
-  >({});
+  const [credPool, setCredPool] = useState<CredentialPool>({});
   const [poolProvider, setPoolProvider] = useState("");
   const [poolNewKey, setPoolNewKey] = useState("");
   const [poolNewLabel, setPoolNewLabel] = useState("");
@@ -196,6 +266,18 @@ function Settings({
   // Auto-save model config when values change (debounced)
   const saveModelConfig = useCallback(async () => {
     if (!modelLoaded.current) return;
+    const issue = modelConfigIssue(
+      modelProvider,
+      modelName,
+      modelBaseUrl,
+      env,
+      credPool,
+    );
+    if (issue) {
+      setModelError(issue);
+      return;
+    }
+    setModelError(null);
     await window.hermesAPI.setModelConfig(
       modelProvider,
       modelName,
@@ -214,7 +296,7 @@ function Settings({
     }
     setModelSaved(true);
     setTimeout(() => setModelSaved(false), 2000);
-  }, [modelProvider, modelName, modelBaseUrl, profile]);
+  }, [modelProvider, modelName, modelBaseUrl, env, credPool, profile]);
 
   useEffect(() => {
     if (!modelLoaded.current) return;
@@ -246,6 +328,8 @@ function Settings({
       {
         key: poolNewKey.trim(),
         label: poolNewLabel.trim() || `Key ${existing.length + 1}`,
+        auth_type: "api_key",
+        source: "manual",
       },
     ];
     await window.hermesAPI.setCredentialPool(poolProvider, entries);
@@ -849,6 +933,11 @@ function Settings({
                 if (v === "custom" && !modelBaseUrl) {
                   setModelBaseUrl("http://localhost:1234/v1");
                 }
+                if (v === "minimax-oauth") {
+                  setModelName("MiniMax-M2.7");
+                  setModelBaseUrl("https://api.minimax.io/anthropic");
+                }
+                setModelError(null);
               }}
             >
               {PROVIDERS.options.map((opt) => (
@@ -874,9 +963,10 @@ function Settings({
               placeholder={t("settings.modelNamePlaceholder")}
             />
             <div className="settings-field-hint">{t("settings.modelHint")}</div>
+            {modelError && <div className="models-error">{modelError}</div>}
           </div>
 
-          {isCustomProvider && (
+          {(isCustomProvider || modelProvider === "minimax-oauth") && (
             <div className="settings-field">
               <label className="settings-field-label">
                 {t("common.baseUrl")}
@@ -966,9 +1056,20 @@ function Settings({
                             `${t("settings.keyLabel")} ${idx + 1}`}
                         </span>
                         <span className="settings-pool-key">
-                          {entry.key
-                            ? `${entry.key.slice(0, 8)}...${entry.key.slice(-4)}`
-                            : t("settings.empty")}
+                          {maskCredential(entry)}
+                        </span>
+                        <span className="settings-pool-meta">
+                          {[
+                            entry.auth_type || "api_key",
+                            entry.source,
+                            entry.last_status,
+                            typeof entry.request_count === "number"
+                              ? `${entry.request_count} req`
+                              : "",
+                            entry.selected || entry.current ? "selected" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </span>
                         <button
                           className="btn-ghost"

@@ -5,9 +5,8 @@
  * on fresh install. Format:
  *   { name: "Display Name", provider: "provider-key", model: "model-id", baseUrl: "" }
  *
- * Provider keys: openrouter, anthropic, openai, custom
- * For openrouter models, use the full path (e.g. "anthropic/claude-sonnet-4-20250514")
- * For direct provider models, use the provider's model ID (e.g. "claude-sonnet-4-20250514")
+ * Provider keys include: nous, minimax, openai-codex, xai, qwen-oauth,
+ * alibaba, openrouter, openai, custom
  */
 
 export interface DefaultModel {
@@ -18,27 +17,29 @@ export interface DefaultModel {
 }
 
 const DEFAULT_MODELS: DefaultModel[] = [
-  // ── OpenRouter (200+ models via single API key) ──────────────────────
+  // ── Recommended Hermes setup paths ───────────────────────────────────
   {
-    name: "Claude Sonnet 4",
-    provider: "openrouter",
-    model: "anthropic/claude-sonnet-4-20250514",
+    name: "MiniMax M2.7",
+    provider: "nous",
+    model: "minimax/minimax-m2.7",
     baseUrl: "",
   },
-
-  // ── Anthropic (direct) ───────────────────────────────────────────────
   {
-    name: "Claude Sonnet 4",
-    provider: "anthropic",
-    model: "claude-sonnet-4-20250514",
+    name: "OpenAI GPT-5.5",
+    provider: "nous",
+    model: "openai/gpt-5.5",
     baseUrl: "",
   },
-
-  // ── OpenAI (direct) ──────────────────────────────────────────────────
   {
-    name: "GPT-4.1",
-    provider: "openai",
-    model: "gpt-4.1",
+    name: "xAI Grok 4.20 Beta",
+    provider: "nous",
+    model: "x-ai/grok-4.20-beta",
+    baseUrl: "",
+  },
+  {
+    name: "Qwen3.5 Plus",
+    provider: "nous",
+    model: "qwen/qwen3.5-plus-02-15",
     baseUrl: "",
   },
 ];

@@ -16,6 +16,182 @@ interface Props {
   isLoading: boolean;
 }
 
+type JsonRecord = Record<string, unknown>;
+
+interface FilePreviewData {
+  content: string;
+  path?: string;
+  totalLines?: number;
+  fileSize?: number;
+  truncated?: boolean;
+  isBinary?: boolean;
+  isImage?: boolean;
+}
+
+function parseJsonRecord(value?: string): JsonRecord | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as JsonRecord)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringValue(record: JsonRecord, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function numberValue(record: JsonRecord, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number") return value;
+  }
+  return undefined;
+}
+
+function booleanValue(record: JsonRecord, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
+  }
+  return undefined;
+}
+
+function extractFilePreview(msg: Message): FilePreviewData | null {
+  const result = parseJsonRecord(msg.content);
+  if (!result || typeof result.content !== "string") return null;
+
+  const calls = parseJsonRecord(msg.tool_calls);
+  const path =
+    stringValue(result, ["path", "file_path", "filepath", "destPath"]) ||
+    (calls
+      ? stringValue(calls, ["path", "file_path", "filepath", "filename"])
+      : undefined);
+
+  return {
+    content: result.content,
+    path,
+    totalLines: numberValue(result, ["total_lines", "totalLines"]),
+    fileSize: numberValue(result, ["file_size", "fileSize", "bytes"]),
+    truncated: booleanValue(result, ["truncated"]),
+    isBinary: booleanValue(result, ["is_binary", "isBinary"]),
+    isImage: booleanValue(result, ["is_image", "isImage"]),
+  };
+}
+
+function stripHermesLineNumbers(content: string): string[] {
+  return content.split("\n").map((line) => line.replace(/^\s*\d+\|/, ""));
+}
+
+function formatBytes(bytes?: number): string | null {
+  if (typeof bytes !== "number") return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ToolFilePreview({
+  file,
+}: {
+  file: FilePreviewData;
+}): React.JSX.Element {
+  const lines = stripHermesLineNumbers(file.content);
+  const displayPath = file.path || "file preview";
+  const sizeLabel = formatBytes(file.fileSize);
+
+  return (
+    <div className="tool-file-preview">
+      <div className="tool-file-header">
+        <div className="tool-file-title">
+          <span className="tool-file-name">{displayPath}</span>
+          <span className="tool-file-meta">
+            {file.totalLines !== undefined ? `${file.totalLines} lines` : null}
+            {file.totalLines !== undefined && sizeLabel ? " / " : null}
+            {sizeLabel}
+            {file.truncated ? " / truncated" : null}
+          </span>
+        </div>
+        {file.path && (
+          <div className="tool-file-actions">
+            <button
+              type="button"
+              onClick={() => void window.hermesAPI.openLocalPath(file.path!)}
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={() => void window.hermesAPI.revealLocalPath(file.path!)}
+            >
+              Reveal
+            </button>
+          </div>
+        )}
+      </div>
+      {file.isBinary ? (
+        <div className="tool-file-empty">
+          Binary file preview is unavailable.
+        </div>
+      ) : (
+        <pre className="tool-file-content">
+          {lines.map((line, index) => (
+            <div className="tool-file-line" key={`${index}-${line}`}>
+              <span className="tool-file-line-number">{index + 1}</span>
+              <code>{line || " "}</code>
+            </div>
+          ))}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function ToolMessage({ msg }: { msg: Message }): React.JSX.Element {
+  const filePreview = extractFilePreview(msg);
+  const toolCalls = parseJsonRecord(msg.tool_calls);
+
+  if (msg.tool_name === "terminal") {
+    return (
+      <div className="terminal-visualizer">
+        <div className="terminal-header">
+          <span className="terminal-dot"></span>
+          <span className="terminal-dot"></span>
+          <span className="terminal-dot"></span>
+          <span className="terminal-title">TERMINAL EXECUTION</span>
+        </div>
+        {toolCalls && typeof toolCalls.command === "string" && (
+          <pre className="terminal-command">
+            <code>{toolCalls.command}</code>
+          </pre>
+        )}
+        <pre className="terminal-output">
+          <code>{msg.content}</code>
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div className="generic-tool-visualizer">
+      <div className="tool-header">Tool: {msg.tool_name || "result"}</div>
+      {filePreview ? (
+        <ToolFilePreview file={filePreview} />
+      ) : (
+        <pre>
+          <code>{msg.content}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
 const Messages: React.FC<Props> = ({ messages, isLoading }) => {
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
 
@@ -94,29 +270,7 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
               </ReactMarkdown>
             ) : msg.role === "tool" ? (
               <div className="msg-80m-tool-block">
-                {msg.tool_name === "terminal" ? (
-                  <div className="terminal-visualizer">
-                    <div className="terminal-header">
-                      <span className="terminal-dot"></span>
-                      <span className="terminal-dot"></span>
-                      <span className="terminal-dot"></span>
-                      <span className="terminal-title">TERMINAL EXECUTION</span>
-                    </div>
-                    {msg.tool_calls && (
-                      <pre className="terminal-command">
-                        <code>{JSON.parse(msg.tool_calls).command}</code>
-                      </pre>
-                    )}
-                    <pre className="terminal-output">
-                      <code>{msg.content}</code>
-                    </pre>
-                  </div>
-                ) : (
-                  <div className="generic-tool-visualizer">
-                    <div className="tool-header">🛠️ Tool: {msg.tool_name}</div>
-                    <pre><code>{msg.content}</code></pre>
-                  </div>
-                )}
+                <ToolMessage msg={msg} />
               </div>
             ) : (
               msg.content

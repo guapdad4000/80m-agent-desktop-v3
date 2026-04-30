@@ -1,4 +1,12 @@
-import { app, BrowserWindow, ipcMain, Menu, Notification, dialog } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  Notification,
+  dialog,
+  shell,
+} from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
@@ -20,7 +28,7 @@ import {
   startBrowserService,
   stopBrowserService,
   navigateTo,
-  getBrowserState
+  getBrowserState,
 } from "./playwright";
 import {
   checkInstallStatus,
@@ -88,7 +96,13 @@ import {
   listCachedSessions,
   updateSessionTitle,
 } from "./session-cache";
-import { listModels, addModel, removeModel, updateModel } from "./models";
+import {
+  listModels,
+  listModelCatalog,
+  addModel,
+  removeModel,
+  updateModel,
+} from "./models";
 import {
   listProfiles,
   createProfile,
@@ -423,22 +437,37 @@ function setupIPC(): void {
     }
   });
 
-  // File Sandbox
-  ipcMain.handle("copy-file-to-workspace", async (_event, sourcePath: string) => {
-    try {
-      const cacheDir = join(HERMES_HOME, "cache");
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-      }
-      const filename = require('path').basename(sourcePath);
-      const destPath = join(cacheDir, filename);
-      await fs.promises.copyFile(sourcePath, destPath);
-      return destPath;
-    } catch (err) {
-      console.error("Failed to copy file to workspace:", err);
-      return null;
-    }
+  ipcMain.handle("open-local-path", async (_event, targetPath: string) => {
+    if (!targetPath || !fs.existsSync(targetPath)) return false;
+    const error = await shell.openPath(targetPath);
+    return !error;
   });
+
+  ipcMain.handle("reveal-local-path", (_event, targetPath: string) => {
+    if (!targetPath || !fs.existsSync(targetPath)) return false;
+    shell.showItemInFolder(targetPath);
+    return true;
+  });
+
+  // File Sandbox
+  ipcMain.handle(
+    "copy-file-to-workspace",
+    async (_event, sourcePath: string) => {
+      try {
+        const cacheDir = join(HERMES_HOME, "cache");
+        if (!fs.existsSync(cacheDir)) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        const filename = require("path").basename(sourcePath);
+        const destPath = join(cacheDir, filename);
+        await fs.promises.copyFile(sourcePath, destPath);
+        return destPath;
+      } catch (err) {
+        console.error("Failed to copy file to workspace:", err);
+        return null;
+      }
+    },
+  );
 
   // Gateway
   ipcMain.handle("start-gateway", () => startGateway());
@@ -468,7 +497,7 @@ function setupIPC(): void {
   ipcMain.handle("select-project-directory", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       properties: ["openDirectory"],
-      title: "Select Project Directory"
+      title: "Select Project Directory",
     });
     if (!result.canceled && result.filePaths.length > 0) {
       return result.filePaths[0];
@@ -480,16 +509,18 @@ function setupIPC(): void {
     try {
       if (!fs.existsSync(dirPath)) return [];
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      return entries.map(e => ({
-        name: e.name,
-        isDirectory: e.isDirectory(),
-        path: join(dirPath, e.name)
-      })).sort((a, b) => {
-        // Directories first
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.name.localeCompare(b.name);
-      });
+      return entries
+        .map((e) => ({
+          name: e.name,
+          isDirectory: e.isDirectory(),
+          path: join(dirPath, e.name),
+        }))
+        .sort((a, b) => {
+          // Directories first
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
     } catch (e) {
       return [];
     }
@@ -613,6 +644,7 @@ function setupIPC(): void {
 
   // Models
   ipcMain.handle("list-models", () => listModels());
+  ipcMain.handle("list-model-catalog", () => listModelCatalog());
   ipcMain.handle(
     "add-model",
     (_event, name: string, provider: string, model: string, baseUrl: string) =>

@@ -196,6 +196,15 @@ interface ModelGroup {
   models: { provider: string; model: string; label: string; baseUrl: string }[];
 }
 
+interface CatalogModel {
+  provider: string;
+  model: string;
+  name: string;
+  description: string;
+  baseUrl: string;
+  source: "catalog" | "fallback";
+}
+
 import { PROVIDERS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 
@@ -289,17 +298,27 @@ function Chat({
   }, [messages]);
 
   const loadModelConfig = useCallback(async (): Promise<void> => {
-    const [mc, savedModels] = await Promise.all([
+    const [mc, savedModels, catalogModels] = await Promise.all([
       window.hermesAPI.getModelConfig(profile),
       window.hermesAPI.listModels(),
+      window.hermesAPI.listModelCatalog().catch(() => [] as CatalogModel[]),
     ]);
     setCurrentModel(mc.model);
     setCurrentProvider(mc.provider);
     setCurrentBaseUrl(mc.baseUrl);
 
-    // Group saved models by provider
+    // Group saved models first, then merge the official Hermes catalog.
     const groupMap = new Map<string, ModelGroup>();
-    for (const m of savedModels) {
+    const seen = new Set<string>();
+    const addModelOption = (m: {
+      provider: string;
+      model: string;
+      label: string;
+      baseUrl: string;
+    }): void => {
+      const key = `${m.provider}:${m.model}`;
+      if (seen.has(key)) return;
+      seen.add(key);
       if (!groupMap.has(m.provider)) {
         groupMap.set(m.provider, {
           provider: m.provider,
@@ -307,10 +326,23 @@ function Chat({
           models: [],
         });
       }
-      groupMap.get(m.provider)!.models.push({
+      groupMap.get(m.provider)!.models.push(m);
+    };
+
+    for (const m of savedModels) {
+      addModelOption({
         provider: m.provider,
         model: m.model,
         label: m.name,
+        baseUrl: m.baseUrl || "",
+      });
+    }
+
+    for (const m of catalogModels as CatalogModel[]) {
+      addModelOption({
+        provider: m.provider,
+        model: m.model,
+        label: m.description ? `${m.name} · ${m.description}` : m.name,
         baseUrl: m.baseUrl || "",
       });
     }

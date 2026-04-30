@@ -4,9 +4,186 @@ import { Download, Upload, User, Wifi, WifiOff, Info } from "lucide-react";
 
 interface Props {
   onBack: () => void;
+  profile?: string;
 }
 
 type TabId = "connection" | "profiles" | "backup" | "about";
+
+interface ModelPreset {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+}
+
+type CredentialPool = Record<string, Array<Record<string, unknown>>>;
+
+const NOUS_MODEL_PRESETS: Record<string, ModelPreset> = {
+  minimax: {
+    id: "nous-minimax",
+    name: "MiniMax · Nous",
+    provider: "nous",
+    model: "minimax/minimax-m2.7",
+    baseUrl: "",
+  },
+  openai: {
+    id: "nous-openai",
+    name: "OpenAI · Nous",
+    provider: "nous",
+    model: "openai/gpt-5.5",
+    baseUrl: "",
+  },
+  xai: {
+    id: "nous-xai",
+    name: "xAI · Nous",
+    provider: "nous",
+    model: "x-ai/grok-4.20-beta",
+    baseUrl: "",
+  },
+  qwen: {
+    id: "nous-qwen",
+    name: "Qwen · Nous",
+    provider: "nous",
+    model: "qwen/qwen3.5-plus-02-15",
+    baseUrl: "",
+  },
+};
+
+const PROVIDER_CHOICES = [
+  "minimax-oauth",
+  "minimax",
+  "minimax-cn",
+  "openai-codex",
+  "openai",
+  "xai",
+  "qwen-oauth",
+  "alibaba",
+  "nous",
+  "openrouter",
+  "custom",
+];
+
+function hasEnv(env: Record<string, string>, key: string): boolean {
+  return Boolean(env[key]?.trim());
+}
+
+function hasCredential(pool: CredentialPool, provider: string): boolean {
+  return (pool[provider] || []).length > 0;
+}
+
+function modelConfigIssue(
+  provider: string,
+  model: string,
+  baseUrl: string,
+  env: Record<string, string>,
+  pool: CredentialPool,
+): string | null {
+  if (!model.trim()) return "Choose a model before saving.";
+  if (provider === "custom" && !baseUrl.trim()) {
+    return "Custom providers need a base URL.";
+  }
+  if (provider === "minimax" && !hasEnv(env, "MINIMAX_API_KEY")) {
+    return "MiniMax API mode needs MINIMAX_API_KEY saved in Hermes.";
+  }
+  if (provider === "minimax-cn" && !hasEnv(env, "MINIMAX_CN_API_KEY")) {
+    return "MiniMax CN mode needs MINIMAX_CN_API_KEY saved in Hermes.";
+  }
+  if (provider === "minimax-oauth" && !hasCredential(pool, "minimax-oauth")) {
+    return "MiniMax OAuth mode needs a saved MiniMax OAuth credential from hermes model.";
+  }
+  if (provider === "nous" && !hasCredential(pool, "nous")) {
+    return "Nous Portal mode needs a saved Nous credential from hermes auth or hermes model.";
+  }
+  if (provider === "openai-codex" && !hasCredential(pool, "openai-codex")) {
+    return "OpenAI Codex mode needs a saved Codex OAuth credential from hermes model.";
+  }
+  if (provider === "alibaba" && !hasEnv(env, "DASHSCOPE_API_KEY")) {
+    return "Qwen DashScope mode needs DASHSCOPE_API_KEY saved in Hermes.";
+  }
+  return null;
+}
+
+function buildActiveModelPresets(
+  env: Record<string, string>,
+  credentialPool: CredentialPool,
+): ModelPreset[] {
+  const miniMaxPreset =
+    hasEnv(env, "MINIMAX_API_KEY") || hasCredential(credentialPool, "minimax")
+      ? {
+          id: "minimax-api",
+          name: "MiniMax · API Key",
+          provider: "minimax",
+          model: "MiniMax-M2.7",
+          baseUrl: "",
+        }
+      : hasEnv(env, "MINIMAX_CN_API_KEY") ||
+          hasCredential(credentialPool, "minimax-cn")
+        ? {
+            id: "minimax-cn-api",
+            name: "MiniMax · CN Key",
+            provider: "minimax-cn",
+            model: "MiniMax-M2.7",
+            baseUrl: "",
+          }
+        : hasCredential(credentialPool, "minimax-oauth")
+          ? {
+              id: "minimax-oauth-auth",
+              name: "MiniMax · OAuth",
+              provider: "minimax-oauth",
+              model: "MiniMax-M2.7",
+              baseUrl: "https://api.minimax.io/anthropic",
+            }
+          : NOUS_MODEL_PRESETS.minimax;
+
+  return [
+    miniMaxPreset,
+    hasCredential(credentialPool, "openai-codex")
+      ? {
+          id: "openai-codex-auth",
+          name: "OpenAI · Codex",
+          provider: "openai-codex",
+          model: "gpt-5.4",
+          baseUrl: "",
+        }
+      : hasEnv(env, "OPENAI_API_KEY") || hasCredential(credentialPool, "openai")
+        ? {
+            id: "openai-api",
+            name: "OpenAI · API Key",
+            provider: "openai",
+            model: "gpt-5.4",
+            baseUrl: "",
+          }
+        : NOUS_MODEL_PRESETS.openai,
+    hasEnv(env, "XAI_API_KEY") || hasCredential(credentialPool, "xai")
+      ? {
+          id: "xai-api",
+          name: "xAI · API Key",
+          provider: "xai",
+          model: "grok-4-1-fast-reasoning",
+          baseUrl: "",
+        }
+      : NOUS_MODEL_PRESETS.xai,
+    hasCredential(credentialPool, "qwen-oauth")
+      ? {
+          id: "qwen-oauth-auth",
+          name: "Qwen · Portal",
+          provider: "qwen-oauth",
+          model: "qwen3-coder-plus",
+          baseUrl: "",
+        }
+      : hasEnv(env, "DASHSCOPE_API_KEY") ||
+          hasCredential(credentialPool, "alibaba")
+        ? {
+            id: "qwen-dashscope",
+            name: "Qwen · DashScope",
+            provider: "alibaba",
+            model: "qwen3.5-plus",
+            baseUrl: "",
+          }
+        : NOUS_MODEL_PRESETS.qwen,
+  ];
+}
 
 interface Profile {
   id: string;
@@ -15,12 +192,13 @@ interface Profile {
   createdAt: number;
 }
 
-const Settings80m: React.FC<Props> = ({ onBack }) => {
+const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
   const [activeTab, setActiveTab] = useState<TabId>("connection");
   const [provider, setProvider] = useState("openrouter");
   const [model, setModel] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [saved, setSaved] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Connection
@@ -42,14 +220,15 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
   // About
   const [hermesVersion, setHermesVersion] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
+  const [env, setEnv] = useState<Record<string, string>>({});
+  const [credentialPool, setCredentialPool] = useState<CredentialPool>({});
 
-  // Models List
-  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; provider: string; model: string; baseUrl: string }>>([]);
+  const activeModelPresets = buildActiveModelPresets(env, credentialPool);
 
   useEffect(() => {
     if (window.hermesAPI) {
       // Load model config
-      window.hermesAPI.getModelConfig?.().then(
+      window.hermesAPI.getModelConfig?.(profile).then(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (cfg: any) => {
           if (cfg) {
@@ -72,6 +251,14 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
         }
       });
 
+      window.hermesAPI.getEnv?.(profile).then((values) => {
+        setEnv(values || {});
+      });
+
+      window.hermesAPI.getCredentialPool?.().then((pool) => {
+        setCredentialPool((pool || {}) as CredentialPool);
+      });
+
       // Load profiles - use raw response, map to our interface
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.hermesAPI.listProfiles?.().then((list: any[]) => {
@@ -92,11 +279,6 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
         );
       });
 
-      // Load available models for picker
-      window.hermesAPI.listModels?.().then((list) => {
-        setAvailableModels(list || []);
-      });
-
       // Load versions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.hermesAPI.getHermesVersion?.().then((v: any) => {
@@ -109,12 +291,29 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [profile]);
 
   const handleSave = async () => {
     if (window.hermesAPI) {
       try {
-        await window.hermesAPI.setModelConfig(provider, model, baseUrl);
+        const issue = modelConfigIssue(
+          provider,
+          model,
+          baseUrl,
+          env,
+          credentialPool,
+        );
+        if (issue) {
+          setModelError(issue);
+          return;
+        }
+        setModelError(null);
+        await window.hermesAPI.setModelConfig(
+          provider,
+          model,
+          baseUrl,
+          profile,
+        );
         await window.hermesAPI.setConnectionConfig(connMode, remoteUrl, apiKey);
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -122,13 +321,34 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  const handleQuickModelSelect = async (m: { provider: string; model: string; baseUrl: string }) => {
+  const handleQuickModelSelect = async (m: {
+    provider: string;
+    model: string;
+    baseUrl: string;
+  }) => {
     setProvider(m.provider);
     setModel(m.model);
     setBaseUrl(m.baseUrl || "");
     if (window.hermesAPI) {
       try {
-        await window.hermesAPI.setModelConfig(m.provider, m.model, m.baseUrl || "");
+        const issue = modelConfigIssue(
+          m.provider,
+          m.model,
+          m.baseUrl || "",
+          env,
+          credentialPool,
+        );
+        if (issue) {
+          setModelError(issue);
+          return;
+        }
+        setModelError(null);
+        await window.hermesAPI.setModelConfig(
+          m.provider,
+          m.model,
+          m.baseUrl || "",
+          profile,
+        );
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } catch (_) {}
@@ -241,7 +461,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
             alignItems: "center",
             justifyContent: "center",
             fontFamily: "'Fira Code', monospace",
-            color: "#555",
+            color: "#e8e8e8",
             fontSize: "12px",
           }}
         >
@@ -311,7 +531,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                         connMode === "local"
                           ? "rgba(74,222,128,0.1)"
                           : "transparent",
-                      color: connMode === "local" ? "#4ade80" : "#666",
+                      color: connMode === "local" ? "#4ade80" : "#e8e8e8",
                       fontFamily: "'Fira Code', monospace",
                       fontSize: "11px",
                       fontWeight: 700,
@@ -331,7 +551,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                         connMode === "remote"
                           ? "rgba(74,222,128,0.1)"
                           : "transparent",
-                      color: connMode === "remote" ? "#4ade80" : "#666",
+                      color: connMode === "remote" ? "#4ade80" : "#e8e8e8",
                       fontFamily: "'Fira Code', monospace",
                       fontSize: "11px",
                       fontWeight: 700,
@@ -373,20 +593,30 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
 
               <div className="settings-80m-field">
                 <label className="settings-80m-label">Active Model</label>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-                  {availableModels.map((m) => (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {activeModelPresets.map((m) => (
                     <button
                       key={m.id}
                       onClick={() => handleQuickModelSelect(m)}
                       style={{
                         padding: "8px 16px",
                         borderRadius: "8px",
-                        border: `1px solid ${model === m.model ? "#4ade80" : "rgba(74,222,128,0.15)"}`,
+                        border: `1px solid ${provider === m.provider && model === m.model ? "#4ade80" : "rgba(74,222,128,0.15)"}`,
                         background:
-                          model === m.model
+                          provider === m.provider && model === m.model
                             ? "rgba(74,222,128,0.1)"
                             : "transparent",
-                        color: model === m.model ? "#4ade80" : "#666",
+                        color:
+                          provider === m.provider && model === m.model
+                            ? "#4ade80"
+                            : "#e8e8e8",
                         fontFamily: "'Fira Code', monospace",
                         fontSize: "11px",
                         fontWeight: 700,
@@ -400,12 +630,24 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                 </div>
 
                 <div className="settings-80m-divider" />
-                <label className="settings-80m-label" style={{ marginTop: "16px" }}>Custom Model Override</label>
+                <label
+                  className="settings-80m-label"
+                  style={{ marginTop: "16px" }}
+                >
+                  Custom Model Override
+                </label>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {["openrouter", "xai", "minimax", "kimi", "qwen", "nous", "openai", "custom"].map((p) => (
+                  {PROVIDER_CHOICES.map((p) => (
                     <button
                       key={p}
-                      onClick={() => setProvider(p)}
+                      onClick={() => {
+                        setProvider(p);
+                        if (p === "minimax-oauth") {
+                          setModel("MiniMax-M2.7");
+                          setBaseUrl("https://api.minimax.io/anthropic");
+                        }
+                        setModelError(null);
+                      }}
                       style={{
                         padding: "8px 16px",
                         borderRadius: "8px",
@@ -414,7 +656,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                           provider === p
                             ? "rgba(74,222,128,0.1)"
                             : "transparent",
-                        color: provider === p ? "#4ade80" : "#666",
+                        color: provider === p ? "#4ade80" : "#e8e8e8",
                         fontFamily: "'Fira Code', monospace",
                         fontSize: "11px",
                         fontWeight: 700,
@@ -436,6 +678,18 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                   placeholder="e.g. openai/gpt-5.5 or codex"
                   className="settings-80m-input"
                 />
+                {modelError && (
+                  <div
+                    style={{
+                      color: "#ef4444",
+                      fontFamily: "'Fira Code', monospace",
+                      fontSize: "11px",
+                      marginTop: "8px",
+                    }}
+                  >
+                    {modelError}
+                  </div>
+                )}
               </div>
 
               <div className="settings-80m-field">
@@ -494,7 +748,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                 {profiles.length === 0 ? (
                   <p
                     style={{
-                      color: "#555",
+                      color: "#e8e8e8",
                       fontFamily: "'Fira Code', monospace",
                       fontSize: "12px",
                       textAlign: "center",
@@ -552,7 +806,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                 <label className="settings-80m-label">Hermes Backup</label>
                 <p
                   style={{
-                    color: "#666",
+                    color: "#e8e8e8",
                     fontFamily: "'Fira Code', monospace",
                     fontSize: "11px",
                     marginBottom: "12px",
@@ -590,7 +844,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
                 <label className="settings-80m-label">Restore / Import</label>
                 <p
                   style={{
-                    color: "#666",
+                    color: "#e8e8e8",
                     fontFamily: "'Fira Code', monospace",
                     fontSize: "11px",
                     marginBottom: "12px",
@@ -680,7 +934,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
           border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
-          color: #555;
+          color: #e8e8e8;
           font-family: 'Fira Code', monospace;
           font-size: 11px;
           font-weight: 700;
@@ -864,7 +1118,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
           font-family: 'Fira Code', monospace;
           font-size: 14px;
           font-weight: 700;
-          color: #555;
+          color: #e8e8e8;
           text-transform: uppercase;
           letter-spacing: 0.2em;
           margin: 0;
@@ -893,7 +1147,7 @@ const Settings80m: React.FC<Props> = ({ onBack }) => {
         .settings-80m-about-desc {
           font-family: 'Fira Code', monospace;
           font-size: 11px;
-          color: #555;
+          color: #e8e8e8;
           margin: 0;
           line-height: 1.8;
         }

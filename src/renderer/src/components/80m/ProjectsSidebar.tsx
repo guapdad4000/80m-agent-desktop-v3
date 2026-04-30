@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Folder, FolderOpen, FileText, ChevronRight, ChevronDown, Plus } from "lucide-react";
+import {
+  Folder,
+  FolderOpen,
+  FileText,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+} from "lucide-react";
 
 interface FileNode {
   name: string;
@@ -13,7 +20,11 @@ interface FileTreeNodeProps {
   onFileClick: (path: string) => void;
 }
 
-const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, onFileClick }) => {
+const FileTreeNode: React.FC<FileTreeNodeProps> = ({
+  node,
+  level,
+  onFileClick,
+}) => {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,7 +59,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, onFileClick })
         {node.isDirectory ? (
           <span className="file-tree-icon">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            {expanded ? <FolderOpen size={14} style={{ marginLeft: 4 }} color="#4ade80" /> : <Folder size={14} style={{ marginLeft: 4 }} color="#888" />}
+            {expanded ? (
+              <FolderOpen size={14} style={{ marginLeft: 4 }} color="#4ade80" />
+            ) : (
+              <Folder size={14} style={{ marginLeft: 4 }} color="#e8e8e8" />
+            )}
           </span>
         ) : (
           <span className="file-tree-icon" style={{ marginLeft: 18 }}>
@@ -108,32 +123,48 @@ const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
     }
   };
 
-  const projectName = activeProject ? activeProject.split("/").pop() || activeProject.split("\\").pop() : "";
+  const projectName = activeProject
+    ? activeProject.split("/").pop() || activeProject.split("\\").pop()
+    : "";
+
+  if (!activeProject) {
+    return (
+      <div className="projects-sidebar-collapsed">
+        <button
+          className="projects-add-btn projects-add-btn-collapsed"
+          onClick={handleSelectFolder}
+          title="Open Project Folder"
+        >
+          <Folder size={16} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="projects-sidebar">
       <div className="projects-sidebar-header">
         <h3>WORKSPACE</h3>
-        <button className="projects-add-btn" onClick={handleSelectFolder} title="Open Project Folder">
+        <button
+          className="projects-add-btn"
+          onClick={handleSelectFolder}
+          title="Open Project Folder"
+        >
           <Plus size={16} />
         </button>
       </div>
 
       <div className="projects-sidebar-content">
-        {!activeProject ? (
-          <div className="projects-empty-state">
-            <Folder size={32} color="#444" style={{ marginBottom: 16 }} />
-            <p>No project active.</p>
-            <button onClick={handleSelectFolder} className="btn-primary-80m" style={{ marginTop: 12 }}>
-              Open Folder
-            </button>
-          </div>
-        ) : loading ? (
+        {loading ? (
           <div className="projects-loading">Loading...</div>
         ) : (
           <div className="file-tree-root">
             <div className="file-tree-project-name">
-              <FolderOpen size={14} style={{ marginRight: 6 }} color="#4ade80" />
+              <FolderOpen
+                size={14}
+                style={{ marginRight: 6 }}
+                color="#4ade80"
+              />
               {projectName}
             </div>
             {rootFiles.map((node) => (
@@ -145,22 +176,22 @@ const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
               />
             ))}
             <div style={{ marginTop: 24, padding: "0 8px" }}>
-               <button 
-                 onClick={() => onProjectChange(null)}
-                 style={{ 
-                   background: "transparent", 
-                   border: "1px solid rgba(255,100,100,0.3)", 
-                   color: "#ff6666", 
-                   padding: "4px 8px", 
-                   borderRadius: "4px",
-                   fontSize: "10px",
-                   cursor: "pointer",
-                   width: "100%",
-                   fontFamily: "'Fira Code', monospace"
-                 }}
-               >
-                 CLOSE WORKSPACE
-               </button>
+              <button
+                onClick={() => onProjectChange(null)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255,100,100,0.3)",
+                  color: "#ff6666",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  fontSize: "10px",
+                  cursor: "pointer",
+                  width: "100%",
+                  fontFamily: "'Fira Code', monospace",
+                }}
+              >
+                CLOSE WORKSPACE
+              </button>
             </div>
           </div>
         )}

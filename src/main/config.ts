@@ -208,7 +208,9 @@ export function getModelConfig(profile?: string): {
   const content = readFileSync(configFile, "utf-8");
 
   const providerMatch = content.match(/^\s*provider:\s*["']?([^"'\n#]+)["']?/m);
-  const modelMatch = content.match(/^\s*default:\s*["']?([^"'\n#]+)["']?/m);
+  const modelMatch = content.match(
+    /^\s*(?:default|model):\s*["']?([^"'\n#]+)["']?/m,
+  );
   const baseUrlMatch = content.match(/^\s*base_url:\s*["']?([^"'\n#]+)["']?/m);
 
   const result = {
@@ -229,24 +231,16 @@ export function setModelConfig(
 ): void {
   invalidateCache(`mc:${profile || "default"}`);
   const { configFile } = profilePaths(profile);
-  if (!existsSync(configFile)) return;
+  if (!existsSync(configFile)) {
+    safeWriteFile(
+      configFile,
+      `model:\n  provider: "${provider}"\n  default: "${model}"\n  base_url: "${baseUrl}"\n`,
+    );
+    return;
+  }
 
   let content = readFileSync(configFile, "utf-8");
-
-  const providerRegex = /^(\s*provider:\s*)["']?[^"'\n#]*["']?/m;
-  if (providerRegex.test(content)) {
-    content = content.replace(providerRegex, `$1"${provider}"`);
-  }
-
-  const modelRegex = /^(\s*default:\s*)["']?[^"'\n#]*["']?/m;
-  if (modelRegex.test(content)) {
-    content = content.replace(modelRegex, `$1"${model}"`);
-  }
-
-  const baseUrlRegex = /^(\s*base_url:\s*)["']?[^"'\n#]*["']?/m;
-  if (baseUrlRegex.test(content)) {
-    content = content.replace(baseUrlRegex, `$1"${baseUrl}"`);
-  }
+  content = upsertModelBlock(content, provider, model, baseUrl);
 
   // Disable smart_model_routing
   const lines = content.split("\n");
@@ -268,6 +262,63 @@ export function setModelConfig(
   }
 
   safeWriteFile(configFile, content);
+}
+
+function upsertModelBlock(
+  content: string,
+  provider: string,
+  model: string,
+  baseUrl: string,
+): string {
+  const lines = content.split("\n");
+  let modelStart = lines.findIndex((line) => /^model:\s*(?:#.*)?$/.test(line));
+
+  if (modelStart === -1) {
+    const prefix = content.trimEnd();
+    const separator = prefix ? "\n\n" : "";
+    return `${prefix}${separator}model:\n  provider: "${provider}"\n  default: "${model}"\n  base_url: "${baseUrl}"\n`;
+  }
+
+  let modelEnd = lines.length;
+  for (let i = modelStart + 1; i < lines.length; i++) {
+    if (/^\S/.test(lines[i]) && lines[i].trim() !== "") {
+      modelEnd = i;
+      break;
+    }
+  }
+
+  const block = lines.slice(modelStart, modelEnd);
+  const desired: Record<string, string> = {
+    provider,
+    default: model,
+    base_url: baseUrl,
+  };
+  const seen = new Set<string>();
+
+  const updatedBlock = block.map((line, index) => {
+    if (index === 0) return line;
+    const match = line.match(/^(\s*)(provider|default|model|base_url):/);
+    if (!match) return line;
+    const key = match[2] === "model" ? "default" : match[2];
+    if (!Object.prototype.hasOwnProperty.call(desired, key)) return line;
+    seen.add(key);
+    return `${match[1]}${match[2]}: "${desired[key]}"`;
+  });
+
+  const insertAt = updatedBlock.length;
+  const missing: string[] = [];
+  for (const key of ["provider", "default", "base_url"]) {
+    if (!seen.has(key)) {
+      missing.push(`  ${key}: "${desired[key]}"`);
+    }
+  }
+  updatedBlock.splice(insertAt, 0, ...missing);
+
+  return [
+    ...lines.slice(0, modelStart),
+    ...updatedBlock,
+    ...lines.slice(modelEnd),
+  ].join("\n");
 }
 
 export function getHermesHome(profile?: string): string {
@@ -370,8 +421,17 @@ function authFilePath(): string {
 }
 
 interface CredentialEntry {
-  key: string;
-  label: string;
+  key?: string;
+  access_token?: string;
+  api_key?: string;
+  label?: string;
+  auth_type?: string;
+  source?: string;
+  last_status?: string;
+  request_count?: number;
+  priority?: number;
+  selected?: boolean;
+  current?: boolean;
 }
 
 function readAuthStore(): Record<string, unknown> {
