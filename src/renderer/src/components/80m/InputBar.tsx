@@ -136,6 +136,16 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     }
   };
 
+  useEffect(() => {
+    const handleInject = (e: Event) => {
+      const customEv = e as CustomEvent<string>;
+      setText((prev) => prev ? prev + "\n" + customEv.detail : customEv.detail);
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("inject-chat", handleInject);
+    return () => window.removeEventListener("inject-chat", handleInject);
+  }, []);
+
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

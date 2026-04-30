@@ -132,12 +132,21 @@ function sendMessageViaApi(
   profile?: string,
   _resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
+  activeProject?: string | null,
 ): ChatHandle {
   const mc = getModelConfig(profile);
   const controller = new AbortController();
 
   // Build full conversation from history + current message (standard OpenAI format)
   const messages: Array<{ role: string; content: string }> = [];
+  
+  if (activeProject) {
+    messages.push({
+      role: "system",
+      content: `The user has set the workspace directory to: ${activeProject}. All terminal and file commands should operate in or relative to this directory.`,
+    });
+  }
+
   if (history && history.length > 0) {
     for (const msg of history) {
       messages.push({
@@ -404,6 +413,7 @@ function sendMessageViaCli(
   cb: ChatCallbacks,
   profile?: string,
   resumeSessionId?: string,
+  activeProject?: string | null,
 ): ChatHandle {
   const mc = getModelConfig(profile);
   const profileEnv = readEnv(profile);
@@ -412,7 +422,14 @@ function sendMessageViaCli(
   if (profile && profile !== "default") {
     args.push("-p", profile);
   }
-  args.push("chat", "-q", message, "-Q", "--source", "desktop");
+  
+  let finalMessage = message;
+  if (activeProject && !resumeSessionId) {
+    // Inject system context as part of the first message
+    finalMessage = `[System: The user has set the workspace directory to: ${activeProject}]\n\n${message}`;
+  }
+
+  args.push("chat", "-q", finalMessage, "-Q", "--source", "desktop");
 
   if (resumeSessionId) {
     args.push("--resume", resumeSessionId);
@@ -585,12 +602,13 @@ export async function sendMessage(
   profile?: string,
   resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
+  activeProject?: string | null,
 ): Promise<ChatHandle> {
   ensureInitialized();
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId, history);
+    return sendMessageViaApi(message, cb, profile, resumeSessionId, history, activeProject);
   }
 
   // Check API server availability (cache the result, re-check periodically)
@@ -599,11 +617,11 @@ export async function sendMessage(
   }
 
   if (apiServerAvailable) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId, history);
+    return sendMessageViaApi(message, cb, profile, resumeSessionId, history, activeProject);
   }
 
   // Fallback to CLI
-  return sendMessageViaCli(message, cb, profile, resumeSessionId);
+  return sendMessageViaCli(message, cb, profile, resumeSessionId, activeProject);
 }
 
 // Lazy init — called on first sendMessage or gateway start

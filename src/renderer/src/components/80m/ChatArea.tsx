@@ -8,6 +8,7 @@ interface ChatAreaProps {
   onNewSession: () => void;
   onSessionChange?: (sessionId: string | null) => void;
   profile?: string;
+  activeProject?: string | null;
 }
 
 const ChatArea: React.FC<ChatAreaProps> = ({
@@ -15,6 +16,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   onNewSession,
   onSessionChange,
   profile,
+  activeProject,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -220,6 +222,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           profile || "default",
           activeSessionId || undefined,
           history,
+          activeProject
         );
       } catch (err) {
         setMessages((prev) => [

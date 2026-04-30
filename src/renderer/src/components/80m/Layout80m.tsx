@@ -12,6 +12,7 @@ import Models from "../../screens/Models/Models";
 import Schedules from "../../screens/Schedules/Schedules";
 import CommandPalette from "./CommandPalette";
 import AgentPreviewPanel from "./AgentPreviewPanel";
+import ProjectsSidebar from "./ProjectsSidebar";
 
 type View =
   | "chat"
@@ -31,6 +32,26 @@ const Layout80m: React.FC = () => {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>("default");
+  
+  // Projects state
+  const [activeProject, setActiveProject] = useState<string | null>(() => {
+    return localStorage.getItem("hermes-active-project") || null;
+  });
+
+  const handleProjectChange = useCallback((path: string | null) => {
+    setActiveProject(path);
+    if (path) {
+      localStorage.setItem("hermes-active-project", path);
+    } else {
+      localStorage.removeItem("hermes-active-project");
+    }
+  }, []);
+
+  const handleFileClick = useCallback((path: string) => {
+    // Inject file focus command via a custom event that InputBar / ChatArea can listen to
+    const ev = new CustomEvent("inject-chat", { detail: `[System: User opened file ${path}]` });
+    window.dispatchEvent(ev);
+  }, []);
 
   const handleNewSession = useCallback(async () => {
     // Hermes owns session ids. Do not pre-create UUID rows in state.db;
@@ -95,12 +116,22 @@ const Layout80m: React.FC = () => {
     switch (activeView) {
       case "chat":
         return (
-          <ChatArea
-            currentSession={currentSession}
-            onNewSession={handleNewSession}
-            onSessionChange={setCurrentSession}
-            profile={selectedAgent !== "default" ? selectedAgent : undefined}
-          />
+          <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+            <ProjectsSidebar
+              activeProject={activeProject}
+              onProjectChange={handleProjectChange}
+              onFileClick={handleFileClick}
+            />
+            <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
+              <ChatArea
+                currentSession={currentSession}
+                onNewSession={handleNewSession}
+                onSessionChange={setCurrentSession}
+                profile={selectedAgent !== "default" ? selectedAgent : undefined}
+                activeProject={activeProject}
+              />
+            </div>
+          </div>
         );
       case "sessions":
         return (

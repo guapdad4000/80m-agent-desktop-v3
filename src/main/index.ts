@@ -466,7 +466,7 @@ function setupIPC(): void {
 
   // Projects Sidebar IPC
   ipcMain.handle("select-project-directory", async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(mainWindow!, {
       properties: ["openDirectory"],
       title: "Select Project Directory"
     });
