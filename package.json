@@ -21,6 +21,8 @@
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:release": "electron-vite build && electron-builder --linux AppImage deb snap",
+    "smoke:hermes": "node scripts/hermes-smoke.js",
+    "smoke:hermes:chat": "node scripts/hermes-smoke.js --chat",
     "test:watch": "vitest"
   },
   "dependencies": {

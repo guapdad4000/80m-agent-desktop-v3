@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, Upload, User, Wifi, WifiOff, Info } from "lucide-react";
+import {
+  Activity,
+  Download,
+  RefreshCw,
+  Upload,
+  User,
+  Wifi,
+  WifiOff,
+  Info,
+} from "lucide-react";
 
 interface Props {
   onBack: () => void;
   profile?: string;
 }
 
-type TabId = "connection" | "profiles" | "backup" | "about";
+type TabId = "connection" | "health" | "profiles" | "backup" | "about";
 
 interface ModelPreset {
   id: string;
@@ -18,6 +27,35 @@ interface ModelPreset {
 }
 
 type CredentialPool = Record<string, Array<Record<string, unknown>>>;
+
+interface HermesHealth {
+  install: {
+    installed: boolean;
+    configured: boolean;
+    hasApiKey: boolean;
+    verified: boolean;
+  };
+  connection: {
+    mode: "local" | "remote";
+    remoteUrl: string;
+    hasRemoteApiKey: boolean;
+  };
+  gateway: {
+    running: boolean;
+    apiUrl: string;
+    apiOk: boolean;
+    apiStatus: number | null;
+    apiError: string;
+    hasApiServerKey: boolean;
+  };
+  model: {
+    provider: string;
+    model: string;
+    baseUrl: string;
+  };
+  env: Record<string, boolean>;
+  credentialProviders: Array<{ provider: string; count: number }>;
+}
 
 const NOUS_MODEL_PRESETS: Record<string, ModelPreset> = {
   minimax: {
@@ -222,8 +260,23 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
   const [appVersion, setAppVersion] = useState("");
   const [env, setEnv] = useState<Record<string, string>>({});
   const [credentialPool, setCredentialPool] = useState<CredentialPool>({});
+  const [health, setHealth] = useState<HermesHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
 
   const activeModelPresets = buildActiveModelPresets(env, credentialPool);
+
+  const refreshHealth = async () => {
+    if (!window.hermesAPI?.getHermesHealth) return;
+    setHealthLoading(true);
+    try {
+      const next = (await window.hermesAPI.getHermesHealth(
+        profile,
+      )) as HermesHealth;
+      setHealth(next);
+    } finally {
+      setHealthLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (window.hermesAPI) {
@@ -258,6 +311,8 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
       window.hermesAPI.getCredentialPool?.().then((pool) => {
         setCredentialPool((pool || {}) as CredentialPool);
       });
+
+      void refreshHealth();
 
       // Load profiles - use raw response, map to our interface
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -429,6 +484,7 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: "connection", label: "Connection", icon: <Wifi size={14} /> },
+    { id: "health", label: "Health", icon: <Activity size={14} /> },
     { id: "profiles", label: "Profiles", icon: <User size={14} /> },
     { id: "backup", label: "Backup", icon: <Download size={14} /> },
     { id: "about", label: "About", icon: <Info size={14} /> },
@@ -705,6 +761,107 @@ const Settings80m: React.FC<Props> = ({ onBack, profile }) => {
               <button onClick={handleSave} className="settings-80m-save-btn">
                 {saved ? "SAVED ✓" : "SAVE CONFIG"}
               </button>
+            </motion.div>
+          )}
+
+          {activeTab === "health" && (
+            <motion.div
+              key="health"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+              className="settings-80m-section"
+            >
+              <div className="settings-80m-health-header">
+                <label className="settings-80m-label">Hermes Health</label>
+                <button
+                  type="button"
+                  className="settings-80m-profile-btn"
+                  onClick={() => void refreshHealth()}
+                  disabled={healthLoading}
+                >
+                  <RefreshCw size={13} />
+                  {healthLoading ? "Checking" : "Refresh"}
+                </button>
+              </div>
+
+              {health ? (
+                <div className="settings-80m-health-grid">
+                  <div className="settings-80m-health-card">
+                    <span className="settings-80m-health-title">Install</span>
+                    <span
+                      className={`settings-80m-health-pill ${health.install.installed && health.install.verified ? "ok" : "bad"}`}
+                    >
+                      {health.install.installed && health.install.verified
+                        ? "Ready"
+                        : "Needs attention"}
+                    </span>
+                    <p>
+                      Config: {health.install.configured ? "found" : "missing"}
+                    </p>
+                    <p>
+                      Provider key:{" "}
+                      {health.install.hasApiKey ? "found" : "missing"}
+                    </p>
+                  </div>
+
+                  <div className="settings-80m-health-card">
+                    <span className="settings-80m-health-title">Gateway</span>
+                    <span
+                      className={`settings-80m-health-pill ${health.gateway.running && health.gateway.apiOk ? "ok" : "bad"}`}
+                    >
+                      {health.gateway.apiOk ? "API online" : "API offline"}
+                    </span>
+                    <p>{health.gateway.apiUrl}</p>
+                    <p>
+                      HTTP: {health.gateway.apiStatus || "none"}
+                      {health.gateway.apiError
+                        ? ` / ${health.gateway.apiError}`
+                        : ""}
+                    </p>
+                    <p>
+                      Local API key:{" "}
+                      {health.gateway.hasApiServerKey ? "present" : "missing"}
+                    </p>
+                  </div>
+
+                  <div className="settings-80m-health-card">
+                    <span className="settings-80m-health-title">Model</span>
+                    <span className="settings-80m-health-pill ok">
+                      {health.model.provider || "auto"}
+                    </span>
+                    <p>{health.model.model || "No model configured"}</p>
+                    <p>{health.model.baseUrl || "Default base URL"}</p>
+                  </div>
+
+                  <div className="settings-80m-health-card">
+                    <span className="settings-80m-health-title">
+                      Credentials
+                    </span>
+                    <span className="settings-80m-health-pill ok">
+                      {health.credentialProviders.length} pools
+                    </span>
+                    <p>
+                      Env keys:{" "}
+                      {Object.entries(health.env)
+                        .filter(([, present]) => present)
+                        .map(([key]) => key.replace(/^has/, ""))
+                        .join(", ") || "none detected"}
+                    </p>
+                    <p>
+                      Pools:{" "}
+                      {health.credentialProviders
+                        .map((entry) => `${entry.provider} (${entry.count})`)
+                        .join(", ") || "none detected"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="settings-80m-health-empty">
+                  Health data is not available yet.
+                </p>
+              )}
             </motion.div>
           )}
 

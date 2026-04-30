@@ -56,14 +56,15 @@ const BackgroundLayers: React.FC = () => {
         />
       </div>
 
-      {/* Layer 3: Cream paper texture overlay */}
+      {/* Layer 3: Local paper texture approximation */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           backgroundImage:
-            "url('https://www.transparenttextures.com/patterns/cream-paper.png')",
-          opacity: 0.4,
+            "radial-gradient(rgba(15, 23, 42, 0.12) 0.7px, transparent 0.7px)",
+          backgroundSize: "5px 5px",
+          opacity: 0.18,
           mixBlendMode: "multiply",
           zIndex: -2,
         }}

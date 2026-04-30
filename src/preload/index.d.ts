@@ -15,6 +15,36 @@ interface InstallProgress {
   log: string;
 }
 
+interface HermesHealth {
+  install: InstallStatus;
+  connection: {
+    mode: "local" | "remote";
+    remoteUrl: string;
+    hasRemoteApiKey: boolean;
+  };
+  gateway: {
+    running: boolean;
+    apiUrl: string;
+    apiOk: boolean;
+    apiStatus: number | null;
+    apiError: string;
+    hasApiServerKey: boolean;
+  };
+  model: {
+    provider: string;
+    model: string;
+    baseUrl: string;
+  };
+  env: {
+    hasMiniMaxKey: boolean;
+    hasMiniMaxCnKey: boolean;
+    hasOpenAIKey: boolean;
+    hasXaiKey: boolean;
+    hasDashScopeKey: boolean;
+  };
+  credentialProviders: Array<{ provider: string; count: number }>;
+}
+
 interface HermesAPI {
   // Installation
   checkInstall: () => Promise<InstallStatus>;
@@ -65,6 +95,7 @@ interface HermesAPI {
     apiKey?: string,
   ) => Promise<boolean>;
   testRemoteConnection: (url: string, apiKey?: string) => Promise<boolean>;
+  getHermesHealth: (profile?: string) => Promise<HermesHealth>;
 
   // Chat
   sendMessage: (

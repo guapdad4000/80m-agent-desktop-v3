@@ -104,6 +104,8 @@ const hermesAPI = {
 
   testRemoteConnection: (url: string, apiKey?: string): Promise<boolean> =>
     ipcRenderer.invoke("test-remote-connection", url, apiKey),
+  getHermesHealth: (profile?: string): Promise<unknown> =>
+    ipcRenderer.invoke("get-hermes-health", profile),
 
   // Chat
   sendMessage: (

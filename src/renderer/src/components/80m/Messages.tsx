@@ -28,6 +28,14 @@ interface FilePreviewData {
   isImage?: boolean;
 }
 
+interface FileArtifactData {
+  path?: string;
+  sourcePath?: string;
+  action: "created" | "moved" | "file" | "image" | "pdf";
+  bytes?: number;
+  output?: string;
+}
+
 function parseJsonRecord(value?: string): JsonRecord | null {
   if (!value) return null;
   try {
@@ -40,10 +48,37 @@ function parseJsonRecord(value?: string): JsonRecord | null {
   }
 }
 
+function prettyJson(value: string): string {
+  const parsed = parseJsonRecord(value);
+  return parsed ? JSON.stringify(parsed, null, 2) : value;
+}
+
 function stringValue(record: JsonRecord, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function firstPathValue(
+  ...records: Array<JsonRecord | null>
+): string | undefined {
+  const keys = [
+    "path",
+    "file_path",
+    "filepath",
+    "filename",
+    "destPath",
+    "dest_path",
+    "destination",
+    "target",
+    "output_path",
+  ];
+  for (const record of records) {
+    if (!record) continue;
+    const found = stringValue(record, keys);
+    if (found) return found;
   }
   return undefined;
 }
@@ -54,6 +89,56 @@ function numberValue(record: JsonRecord, keys: string[]): number | undefined {
     if (typeof value === "number") return value;
   }
   return undefined;
+}
+
+function extensionFor(filePath?: string): string {
+  if (!filePath) return "";
+  const match = filePath.toLowerCase().match(/\.([a-z0-9]+)(?:[?#].*)?$/);
+  return match?.[1] || "";
+}
+
+function isImagePath(filePath?: string): boolean {
+  return ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(
+    extensionFor(filePath),
+  );
+}
+
+function isPdfPath(filePath?: string): boolean {
+  return extensionFor(filePath) === "pdf";
+}
+
+function localFileUrl(filePath: string): string {
+  return `file://${filePath.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function splitShellArgs(command: string): string[] {
+  const args: string[] = [];
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(command))) {
+    args.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return args;
+}
+
+function pathFromCommand(command?: string): {
+  sourcePath?: string;
+  destPath?: string;
+} {
+  if (!command) return {};
+  const args = splitShellArgs(
+    command.replace(/^\/bin\/(?:bash|sh)\s+-lc\s+/, ""),
+  );
+  const mvIndex = args.findIndex((arg) => arg === "mv" || arg.endsWith("/mv"));
+  if (mvIndex >= 0 && args.length >= mvIndex + 3) {
+    return {
+      sourcePath: args[mvIndex + 1],
+      destPath: args[mvIndex + 2],
+    };
+  }
+  const redirectMatch = command.match(/>\s*["']?([^"'\s]+)["']?/);
+  if (redirectMatch) return { destPath: redirectMatch[1] };
+  return {};
 }
 
 function booleanValue(record: JsonRecord, keys: string[]): boolean | undefined {
@@ -69,11 +154,7 @@ function extractFilePreview(msg: Message): FilePreviewData | null {
   if (!result || typeof result.content !== "string") return null;
 
   const calls = parseJsonRecord(msg.tool_calls);
-  const path =
-    stringValue(result, ["path", "file_path", "filepath", "destPath"]) ||
-    (calls
-      ? stringValue(calls, ["path", "file_path", "filepath", "filename"])
-      : undefined);
+  const path = firstPathValue(result, calls);
 
   return {
     content: result.content,
@@ -86,6 +167,38 @@ function extractFilePreview(msg: Message): FilePreviewData | null {
   };
 }
 
+function extractFileArtifact(msg: Message): FileArtifactData | null {
+  const result = parseJsonRecord(msg.content);
+  const calls = parseJsonRecord(msg.tool_calls);
+  const command =
+    calls && typeof calls.command === "string" ? calls.command : undefined;
+  const commandPaths = pathFromCommand(command);
+  const path = firstPathValue(result, calls) || commandPaths.destPath;
+  const sourcePath = commandPaths.sourcePath;
+  const output = result
+    ? stringValue(result, ["output", "message"])
+    : undefined;
+  const bytes = result
+    ? numberValue(result, ["bytes_written", "bytes", "file_size", "fileSize"])
+    : undefined;
+
+  if (!path && !sourcePath) return null;
+
+  if (path && isImagePath(path)) {
+    return { path, sourcePath, action: "image", bytes, output };
+  }
+  if (path && isPdfPath(path)) {
+    return { path, sourcePath, action: "pdf", bytes, output };
+  }
+  if (result && "bytes_written" in result) {
+    return { path, sourcePath, action: "created", bytes, output };
+  }
+  if (command?.includes("mv ") || /moved/i.test(msg.content)) {
+    return { path, sourcePath, action: "moved", bytes, output };
+  }
+  return { path, sourcePath, action: "file", bytes, output };
+}
+
 function stripHermesLineNumbers(content: string): string[] {
   return content.split("\n").map((line) => line.replace(/^\s*\d+\|/, ""));
 }
@@ -95,6 +208,26 @@ function formatBytes(bytes?: number): string | null {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function FileActions({ path }: { path?: string }): React.JSX.Element | null {
+  if (!path) return null;
+  return (
+    <div className="tool-file-actions">
+      <button
+        type="button"
+        onClick={() => void window.hermesAPI.openLocalPath(path)}
+      >
+        Open
+      </button>
+      <button
+        type="button"
+        onClick={() => void window.hermesAPI.revealLocalPath(path)}
+      >
+        Reveal
+      </button>
+    </div>
+  );
 }
 
 function ToolFilePreview({
@@ -118,22 +251,7 @@ function ToolFilePreview({
             {file.truncated ? " / truncated" : null}
           </span>
         </div>
-        {file.path && (
-          <div className="tool-file-actions">
-            <button
-              type="button"
-              onClick={() => void window.hermesAPI.openLocalPath(file.path!)}
-            >
-              Open
-            </button>
-            <button
-              type="button"
-              onClick={() => void window.hermesAPI.revealLocalPath(file.path!)}
-            >
-              Reveal
-            </button>
-          </div>
-        )}
+        <FileActions path={file.path} />
       </div>
       {file.isBinary ? (
         <div className="tool-file-empty">
@@ -153,42 +271,112 @@ function ToolFilePreview({
   );
 }
 
+function ToolFileArtifact({
+  file,
+}: {
+  file: FileArtifactData;
+}): React.JSX.Element {
+  const label =
+    file.action === "created"
+      ? "Created file"
+      : file.action === "moved"
+        ? "Moved file"
+        : file.action === "image"
+          ? "Image preview"
+          : file.action === "pdf"
+            ? "PDF preview"
+            : "File";
+  const sizeLabel = formatBytes(file.bytes);
+
+  return (
+    <div className="tool-file-preview">
+      <div className="tool-file-header">
+        <div className="tool-file-title">
+          <span className="tool-file-name">{file.path || file.sourcePath}</span>
+          <span className="tool-file-meta">
+            {label}
+            {sizeLabel ? ` / ${sizeLabel}` : null}
+            {file.sourcePath && file.path ? ` / from ${file.sourcePath}` : null}
+            {file.output ? ` / ${file.output}` : null}
+          </span>
+        </div>
+        <FileActions path={file.path || file.sourcePath} />
+      </div>
+      {file.path && file.action === "image" && (
+        <div className="tool-media-preview">
+          <img src={localFileUrl(file.path)} alt={file.path} />
+        </div>
+      )}
+      {file.path && file.action === "pdf" && (
+        <div className="tool-pdf-preview">
+          <iframe src={localFileUrl(file.path)} title={file.path} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToolMessage({ msg }: { msg: Message }): React.JSX.Element {
   const filePreview = extractFilePreview(msg);
+  const fileArtifact = filePreview ? null : extractFileArtifact(msg);
   const toolCalls = parseJsonRecord(msg.tool_calls);
+  const title =
+    msg.tool_name === "terminal"
+      ? "Ran terminal command"
+      : filePreview
+        ? "Read file"
+        : fileArtifact
+          ? fileArtifact.action === "created"
+            ? "Created file"
+            : fileArtifact.action === "moved"
+              ? "Moved file"
+              : fileArtifact.action === "image"
+                ? "Opened image"
+                : fileArtifact.action === "pdf"
+                  ? "Opened PDF"
+                  : "File result"
+          : `Tool result${msg.tool_name ? `: ${msg.tool_name}` : ""}`;
 
   if (msg.tool_name === "terminal") {
     return (
-      <div className="terminal-visualizer">
-        <div className="terminal-header">
-          <span className="terminal-dot"></span>
-          <span className="terminal-dot"></span>
-          <span className="terminal-dot"></span>
-          <span className="terminal-title">TERMINAL EXECUTION</span>
-        </div>
-        {toolCalls && typeof toolCalls.command === "string" && (
-          <pre className="terminal-command">
-            <code>{toolCalls.command}</code>
+      <details className="tool-activity-card" open>
+        <summary>{title}</summary>
+        <div className="terminal-visualizer">
+          <div className="terminal-header">
+            <span className="terminal-dot"></span>
+            <span className="terminal-dot"></span>
+            <span className="terminal-dot"></span>
+            <span className="terminal-title">TERMINAL EXECUTION</span>
+          </div>
+          {toolCalls && typeof toolCalls.command === "string" && (
+            <pre className="terminal-command">
+              <code>{toolCalls.command}</code>
+            </pre>
+          )}
+          <pre className="terminal-output">
+            <code>{msg.content}</code>
           </pre>
-        )}
-        <pre className="terminal-output">
-          <code>{msg.content}</code>
-        </pre>
-      </div>
+        </div>
+      </details>
     );
   }
 
   return (
-    <div className="generic-tool-visualizer">
-      <div className="tool-header">Tool: {msg.tool_name || "result"}</div>
-      {filePreview ? (
-        <ToolFilePreview file={filePreview} />
-      ) : (
-        <pre>
-          <code>{msg.content}</code>
-        </pre>
-      )}
-    </div>
+    <details className="tool-activity-card" open>
+      <summary>{title}</summary>
+      <div className="generic-tool-visualizer">
+        <div className="tool-header">Tool: {msg.tool_name || "result"}</div>
+        {filePreview ? (
+          <ToolFilePreview file={filePreview} />
+        ) : fileArtifact ? (
+          <ToolFileArtifact file={fileArtifact} />
+        ) : (
+          <pre>
+            <code>{prettyJson(msg.content)}</code>
+          </pre>
+        )}
+      </div>
+    </details>
   );
 }
 

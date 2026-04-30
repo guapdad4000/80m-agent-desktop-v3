@@ -8,6 +8,8 @@ import {
   shell,
 } from "electron";
 import { join } from "path";
+import http from "http";
+import https from "https";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
@@ -17,11 +19,52 @@ function safeOpenExternal(url: string): void {
   try {
     const parsed = new URL(url);
     if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
-      safeOpenExternal(url);
+      shell.openExternal(url);
     }
   } catch {
     // invalid URL — silently ignore
   }
+}
+
+function checkApiHealth(
+  url: string,
+  apiKey?: string,
+): Promise<{ ok: boolean; status: number | null; error?: string }> {
+  return new Promise((resolve) => {
+    try {
+      const healthUrl = new URL("/health", url);
+      const mod = healthUrl.protocol === "https:" ? https : http;
+      const req = mod.request(
+        healthUrl,
+        {
+          method: "GET",
+          timeout: 2500,
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        },
+        (res) => {
+          res.resume();
+          resolve({
+            ok: res.statusCode === 200,
+            status: res.statusCode || null,
+          });
+        },
+      );
+      req.on("error", (error) =>
+        resolve({ ok: false, status: null, error: error.message }),
+      );
+      req.on("timeout", () => {
+        req.destroy();
+        resolve({ ok: false, status: null, error: "timeout" });
+      });
+      req.end();
+    } catch (error) {
+      resolve({
+        ok: false,
+        status: null,
+        error: error instanceof Error ? error.message : "invalid URL",
+      });
+    }
+  });
 }
 
 import {
@@ -342,6 +385,50 @@ function setupIPC(): void {
     "test-remote-connection",
     (_event, url: string, apiKey?: string) => testRemoteConnection(url, apiKey),
   );
+
+  ipcMain.handle("get-hermes-health", async (_event, profile?: string) => {
+    const install = checkInstallStatus();
+    const connection = getConnectionConfig();
+    const model = getModelConfig(profile);
+    const env = readEnv(profile);
+    const credentials = getCredentialPool();
+    const credentialProviders = Object.entries(credentials)
+      .filter(([, entries]) => entries.length > 0)
+      .map(([provider, entries]) => ({ provider, count: entries.length }));
+    const apiUrl =
+      connection.mode === "remote" && connection.remoteUrl
+        ? connection.remoteUrl
+        : "http://127.0.0.1:8642";
+    const apiKey =
+      connection.mode === "remote" ? connection.apiKey : env.API_SERVER_KEY;
+    const api = await checkApiHealth(apiUrl, apiKey);
+
+    return {
+      install,
+      connection: {
+        mode: connection.mode,
+        remoteUrl: connection.remoteUrl,
+        hasRemoteApiKey: Boolean(connection.apiKey),
+      },
+      gateway: {
+        running: isGatewayRunning(),
+        apiUrl,
+        apiOk: api.ok,
+        apiStatus: api.status,
+        apiError: api.error || "",
+        hasApiServerKey: Boolean(env.API_SERVER_KEY),
+      },
+      model,
+      env: {
+        hasMiniMaxKey: Boolean(env.MINIMAX_API_KEY),
+        hasMiniMaxCnKey: Boolean(env.MINIMAX_CN_API_KEY),
+        hasOpenAIKey: Boolean(env.OPENAI_API_KEY),
+        hasXaiKey: Boolean(env.XAI_API_KEY),
+        hasDashScopeKey: Boolean(env.DASHSCOPE_API_KEY),
+      },
+      credentialProviders,
+    };
+  });
 
   // Chat — lazy-start gateway on first message
   ipcMain.handle(

@@ -160,7 +160,7 @@ export function getConfigValue(key: string, profile?: string): string | null {
 
   const content = readFileSync(configFile, "utf-8");
   const regex = new RegExp(
-    `^\\s*${escapeRegex(key)}:\\s*["']?([^"'\\n#]+)["']?`,
+    `^\\s*${escapeRegex(key)}:[ \\t]*["']?([^"'\\n#]+)["']?`,
     "m",
   );
   const match = content.match(regex);
@@ -207,11 +207,15 @@ export function getModelConfig(profile?: string): {
 
   const content = readFileSync(configFile, "utf-8");
 
-  const providerMatch = content.match(/^\s*provider:\s*["']?([^"'\n#]+)["']?/m);
-  const modelMatch = content.match(
-    /^\s*(?:default|model):\s*["']?([^"'\n#]+)["']?/m,
+  const providerMatch = content.match(
+    /^\s*provider:[ \t]*["']?([^"'\n#]+)["']?/m,
   );
-  const baseUrlMatch = content.match(/^\s*base_url:\s*["']?([^"'\n#]+)["']?/m);
+  const modelMatch = content.match(
+    /^\s*(?:default|model):[ \t]*["']?([^"'\n#]+)["']?/m,
+  );
+  const baseUrlMatch = content.match(
+    /^\s*base_url:[ \t]*["']?([^"'\n#]+)["']?/m,
+  );
 
   const result = {
     provider: providerMatch ? providerMatch[1].trim() : defaults.provider,
