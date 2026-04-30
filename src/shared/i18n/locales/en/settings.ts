@@ -1,7 +1,7 @@
 export default {
   title: "Settings",
   sections: {
-    hermesAgent: "Hermes Agent",
+    hermesAgent: "80m Agent",
     appearance: "Appearance",
     credentialPool: "Credential Pool",
   },

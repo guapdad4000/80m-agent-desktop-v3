@@ -25,9 +25,9 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
           <p>Send a message to start a session with your agent.</p>
         </div>
       )}
-      {messages.map((msg) => (
+      {messages.map((msg, index) => (
         <div
-          key={msg.id}
+          key={`${msg.id}-${index}`}
           className={`msg-80m ${msg.role}`}
           onMouseEnter={() => setHoveredMsg(msg.id)}
           onMouseLeave={() => setHoveredMsg(null)}
@@ -66,7 +66,7 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
               >
-                {msg.content}
+                {msg.content + (isLoading && index === messages.length - 1 ? ' █' : '')}
               </ReactMarkdown>
             ) : (
               msg.content
@@ -77,19 +77,7 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
           )}
         </div>
       ))}
-      {isLoading && (
-        <div className="msg-80m assistant">
-          <span className="msg-80m-role">assistant</span>
-          <div className="msg-80m-bubble">
-            <div className="msg-80m-loading">
-              <div className="msg-80m-loading-dots">
-                <span /><span /><span />
-              </div>
-              <span>thinking...</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Thinking state is now handled by the animated ATM mascot in the sidebar */}
     </div>
   );
 };

@@ -1,6 +1,5 @@
 import {
   app,
-  shell,
   BrowserWindow,
   ipcMain,
   Menu,
@@ -10,6 +9,18 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
+
+/** Allowlist: only http, https, and mailto URLs for security. */
+function safeOpenExternal(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
+      safeOpenExternal(url);
+    }
+  } catch {
+    // invalid URL — silently ignore
+  }
+}
 import {
   checkInstallStatus,
   runInstall,
@@ -130,11 +141,13 @@ function createWindow(): void {
     ...(process.platform === "darwin"
       ? { trafficLightPosition: { x: 16, y: 16 } }
       : {}),
+    title: "80m Agent Desktop",
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
       webviewTag: true,
+      autoplayPolicy: "no-user-gesture-required",
     },
   });
 
@@ -167,7 +180,7 @@ function createWindow(): void {
   );
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    safeOpenExternal(details.url);
     return { action: "deny" };
   });
 
@@ -370,7 +383,7 @@ function setupIPC(): void {
                 .trim()
                 .slice(0, 80);
               new Notification({
-                title: "Hermes Agent",
+                title: "80m Agent",
                 body: preview || "Response ready",
               }).show();
             }
@@ -382,7 +395,7 @@ function setupIPC(): void {
             // Notify on error too if window not focused
             if (mainWindow && !mainWindow.isFocused()) {
               new Notification({
-                title: "Hermes Agent — Error",
+                title: "80m Agent — Error",
                 body: error.slice(0, 100),
               }).show();
             }
@@ -641,7 +654,7 @@ function setupIPC(): void {
 
   // Shell
   ipcMain.handle("open-external", (_event, url: string) => {
-    shell.openExternal(url);
+    safeOpenExternal(url);
   });
 
   // Backup / Import
@@ -758,15 +771,17 @@ function buildMenu(): void {
       label: "Help",
       submenu: [
         {
-          label: "Hermes Agent on GitHub",
+          label: "80m Agent on GitHub",
           click: (): void => {
-            shell.openExternal("https://github.com/fathah/Hermes-Agent");
+            safeOpenExternal("https://github.com/guapdad4000/80m-agent-desktop");
           },
         },
         {
           label: "Report an Issue",
           click: (): void => {
-            shell.openExternal("https://github.com/fathah/Hermes-Agent/issues");
+            safeOpenExternal(
+              "https://github.com/guapdad4000/80m-agent-desktop/issues",
+            );
           },
         },
       ],

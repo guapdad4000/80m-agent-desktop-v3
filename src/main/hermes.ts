@@ -159,7 +159,11 @@ function sendMessageViaApi(
     ...getRemoteAuthHeader(),
   };
 
+  // Include resume session ID so Hermes continues the correct conversation
   let sessionId = _resumeSessionId || "";
+  if (sessionId) {
+    headers["X-Hermes-Session-ID"] = sessionId;
+  }
   let hasContent = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
@@ -586,7 +590,7 @@ export async function sendMessage(
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId);
+    return sendMessageViaApi(message, cb, profile, resumeSessionId, history);
   }
 
   // Check API server availability (cache the result, re-check periodically)

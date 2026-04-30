@@ -307,7 +307,7 @@ export async function runHermesUpdate(
     onProgress({
       step: 1,
       totalSteps: 1,
-      title: "Updating Hermes Agent",
+      title: "Updating 80m Agent",
       detail: text.trim().slice(0, 120),
       log,
     });
@@ -385,7 +385,7 @@ const STAGE_MARKERS: { pattern: RegExp; step: number; title: string }[] = [
   {
     pattern: /Cloning|cloning|Updating.*repository|Repository/i,
     step: 4,
-    title: "Downloading Hermes Agent",
+    title: "Downloading 80m Agent",
   },
   {
     pattern: /Creating virtual|virtual environment|venv/i,

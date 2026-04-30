@@ -39,14 +39,14 @@ const Animated80MLogo: React.FC = () => {
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
 
-      // Draw "80M" in off-white
+      // Draw "80m" in off-white
       ctx.fillStyle = '#e8e8e8';
-      ctx.fillText('80M', 0, 0);
+      ctx.fillText('80m', 0, 0);
 
       // Draw "." dot in green with breathing glow
       ctx.shadowBlur = glowRadius + 4;
       ctx.fillStyle = `rgba(74, ${197 + Math.floor(breathe * 30)}, 128, ${0.8 + breathe * 0.2})`;
-      const dotX = ctx.measureText('80M').width + 2;
+      const dotX = ctx.measureText('80m').width + 2;
       ctx.fillText('.', dotX, 0);
 
       ctx.restore();

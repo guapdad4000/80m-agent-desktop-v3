@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { useI18n } from '../useI18n';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
 import Settings from './Settings';
@@ -26,38 +25,34 @@ type View =
   | 'schedules';
 
 const Layout80m: React.FC = () => {
-  const { t } = useI18n();
   const [activeView, setActiveView] = useState<View>('chat');
   const [currentSession, setCurrentSession] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<string>('default');
 
-  const handleNewSession = useCallback(() => {
+  const handleNewSession = useCallback(async () => {
+    // Hermes owns session ids. Do not pre-create UUID rows in state.db;
+    // first send creates a real Hermes session and ChatArea reports it back.
     setCurrentSession(null);
+    setActiveView('chat');
   }, []);
 
   const handleSelectSession = useCallback((id: string | null) => {
+    if (id === null) {
+      // New chat requested via sidebar
+      handleNewSession();
+      return;
+    }
     setCurrentSession(id);
     setActiveView('chat');
-  }, []);
+  }, [handleNewSession]);
 
   const handleBackToChat = useCallback(() => {
     setActiveView('chat');
   }, []);
 
-  const handleOpenSessions = useCallback(() => {
-    setActiveView('sessions');
-  }, []);
-
-  const handleOpenMemory = useCallback(() => {
-    setActiveView('memory');
-  }, []);
-
-  const handleOpenSkills = useCallback(() => {
-    setActiveView('skills');
-  }, []);
-
-  const handleOpenSettings = useCallback(() => {
-    setActiveView('settings');
+  const handleViewChange = useCallback((v: string) => {
+    setActiveView(v as View);
   }, []);
 
   // Ctrl+K / Cmd+K to open command palette
@@ -73,11 +68,8 @@ const Layout80m: React.FC = () => {
   }, []);
 
   const renderMainContent = () => {
-    const wrap = (title: string, el: ReactNode) => (
+    const wrap = (_title: string, el: ReactNode) => (
       <div className="main-80m">
-        <div className="screen-header-80m">
-          <span className="screen-header-80m-title">{t(title)}</span>
-        </div>
         <div className="screen-content-80m">
           {el}
         </div>
@@ -89,6 +81,8 @@ const Layout80m: React.FC = () => {
           <ChatArea
             currentSession={currentSession}
             onNewSession={handleNewSession}
+            onSessionChange={setCurrentSession}
+            profile={selectedAgent !== 'default' ? selectedAgent : undefined}
           />
         );
       case 'sessions':
@@ -103,53 +97,69 @@ const Layout80m: React.FC = () => {
           />
         );
       case 'memory':
-        return wrap('memory.title', <Memory />);
+        return <Memory profile={selectedAgent !== 'default' ? selectedAgent : undefined} />;
       case 'soul':
-        return wrap('soul.title', <Soul />);
+        return wrap('SOUL', <Soul profile={selectedAgent !== 'default' ? selectedAgent : undefined} />);
       case 'skills':
-        return wrap('skills.title', <Skills />);
+        return wrap('SKILLS', <Skills profile={selectedAgent !== 'default' ? selectedAgent : undefined} />);
       case 'tools':
-        return wrap('tools.title', <Tools />);
+        return wrap('TOOLS', <Tools profile={selectedAgent !== 'default' ? selectedAgent : undefined} />);
       case 'gateway':
-        return wrap('gateway.title', <Gateway />);
+        return wrap('GATEWAY', <Gateway />);
       case 'settings':
-        return wrap('settings.title', <Settings onBack={handleBackToChat} />);
+        return <Settings onBack={handleBackToChat} />;
       case 'models':
-        return wrap('models.title', <Models />);
+        return wrap('MODELS', <Models />);
       case 'schedules':
-        return wrap('schedules.title', <Schedules />);
+        return wrap('SCHEDULES', <Schedules profile={selectedAgent !== 'default' ? selectedAgent : undefined} />);
       default:
         return (
           <ChatArea
             currentSession={currentSession}
             onNewSession={handleNewSession}
+            onSessionChange={setCurrentSession}
+            profile={selectedAgent !== 'default' ? selectedAgent : undefined}
           />
         );
     }
   };
 
+  const handleAgentChange = useCallback((agent: string) => {
+    if (agent !== selectedAgent) {
+      // Switching agents invalidates any active session — clear it so the new
+      // agent doesn't accidentally continue a session from the previous agent.
+      setCurrentSession(null);
+    }
+    setSelectedAgent(agent);
+  }, [selectedAgent]);
+
+  const agentThemeClass = selectedAgent && selectedAgent !== 'default' 
+    ? `theme-${selectedAgent.toLowerCase().replace(/\s+/g, '-')}` 
+    : '';
+
   return (
-    <div className="layout-80m">
+    <div className={`layout-80m ${agentThemeClass}`}>
       <Sidebar
         activeView={activeView}
-        onViewChange={(v) => setActiveView(v as View)}
+        onViewChange={handleViewChange}
         currentSession={currentSession}
         onSelectSession={handleSelectSession}
+        selectedAgent={selectedAgent}
+        onAgentChange={handleAgentChange}
       />
       {renderMainContent()}
 
       <CommandPalette
         isOpen={showCommandPalette}
         onClose={() => setShowCommandPalette(false)}
-        onNewChat={() => {
-          handleNewSession();
-          setActiveView('chat');
+        onNavigate={(view) => {
+          setActiveView(view as View);
           setShowCommandPalette(false);
         }}
-        onOpenSessions={handleOpenSessions}
-        onOpenMemory={handleOpenMemory}
-        onOpenSkills={handleOpenSkills}
-        onOpenSettings={handleOpenSettings}
+        onNewChat={() => {
+          handleNewSession();
+          setShowCommandPalette(false);
+        }}
       />
 
       {/* Expose toggle for Ctrl+K via a custom event */}
@@ -158,6 +168,9 @@ const Layout80m: React.FC = () => {
         style={{ display: 'none' }}
         onClick={() => setShowCommandPalette((p) => !p)}
       />
+
+      {/* Global CRT Scanlines Overlay */}
+      <div className="crt-overlay pointer-events-none" />
     </div>
   );
 };

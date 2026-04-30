@@ -1,4 +1,4 @@
 provider: github
-owner: fathah
-repo: hermes-desktop
-updaterCacheDirName: hermes-desktop-updater
+owner: guapdad4000
+repo: 80m-agent-desktop
+updaterCacheDirName: 80m-agent-desktop-updater

@@ -117,14 +117,14 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
 
   return (
     <div className="input-80m">
-      <div className="input-80m-form">
+      <div className={`input-80m-form ${disabled ? 'thinking' : ''}`}>
       <textarea
         ref={textareaRef}
         className="input-80m-textarea"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Send a message..."
+        placeholder={disabled ? "Agent is thinking..." : "Send a message..."}
         disabled={disabled}
         rows={1}
       />
@@ -149,12 +149,6 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
           <path d="M18 23v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           {/* Base */}
           <path d="M13 31h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          {/* Left sound wave bars */}
-          <rect x="3" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-left-1" />
-          <rect x="7" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-left-2" />
-          {/* Right sound wave bars */}
-          <rect x="30.5" y="10" width="2.5" height="6" rx="1.25" fill="currentColor" className="sound-bar-right-1" />
-          <rect x="26.5" y="8" width="2.5" height="10" rx="1.25" fill="currentColor" className="sound-bar-right-2" />
         </svg>
       </button>
       <button

@@ -201,7 +201,7 @@ function Sessions({
   return (
     <div className="main-80m">
       <div className="screen-header-80m">
-        <span className="screen-header-80m-title">{t("sessions.title")}</span>
+        <span className="screen-header-80m-title">SESSIONS</span>
       </div>
       <div className="screen-content-80m">
         {/* Header with integrated search */}

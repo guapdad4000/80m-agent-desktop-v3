@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import AtmMascot from "../../components/80m/AtmMascot";
+import splashSound from "../../splash-sound.mp3";
 
 interface Props {
   onFinished: () => void;
@@ -7,6 +8,14 @@ interface Props {
 
 export default function SplashScreen({ onFinished }: Props): React.JSX.Element {
   useEffect(() => {
+    try {
+      const audio = new Audio(splashSound);
+      audio.volume = 0.5;
+      audio.play().catch(e => console.log("Audio play failed:", e));
+    } catch (e) {
+      // ignore
+    }
+
     const timer = setTimeout(onFinished, 2800);
     return () => clearTimeout(timer);
   }, [onFinished]);

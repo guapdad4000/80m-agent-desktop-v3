@@ -11,11 +11,18 @@ interface Session {
   updatedAt: number;
 }
 
+interface Profile {
+  name: string;
+  isActive: boolean;
+}
+
 interface SidebarProps {
   onSelectSession: (id: string | null) => void;
   currentSession: string | null;
   activeView: string;
   onViewChange: (view: string) => void;
+  selectedAgent: string;
+  onAgentChange: (agent: string) => void;
 }
 
 function timeAgo(ts: number): string {
@@ -26,25 +33,109 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+const playPowerUpSound = () => {
+  try {
+    const ctx = new window.AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(100, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
+    
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (_) {
+    // Audio not available
+  }
+};
+
 const Sidebar: React.FC<SidebarProps> = ({
   onSelectSession,
   currentSession,
   activeView,
   onViewChange,
+  selectedAgent,
+  onAgentChange,
 }) => {
-  const [selectedAgent] = useState<string>('prawnius');
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [mascotState, setMascotState] = useState<'default' | 'processing' | 'typing' | 'sleep' | 'error' | 'searching' | 'jackpot' | 'lobster' | 'urgent' | 'job-done'>('default');
+
+  useEffect(() => {
+    if (!window.hermesAPI) return;
+
+    let timeout: NodeJS.Timeout;
+
+    const unsubChunk = window.hermesAPI.onChatChunk?.(() => {
+      setMascotState('typing');
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setMascotState('default'), 2000);
+    });
+
+    const unsubTool = window.hermesAPI.onChatToolProgress?.(() => {
+      setMascotState('searching');
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setMascotState('default'), 3000);
+    });
+
+    const unsubDone = window.hermesAPI.onChatDone?.(() => {
+      setMascotState('job-done');
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setMascotState('default'), 3000);
+    });
+
+    const unsubError = window.hermesAPI.onChatError?.(() => {
+      setMascotState('error');
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setMascotState('default'), 3000);
+    });
+
+    const handleChatStart = () => {
+      setMascotState('processing');
+    };
+    window.addEventListener('chat-started', handleChatStart);
+
+    return () => {
+      unsubChunk?.();
+      unsubTool?.();
+      unsubDone?.();
+      unsubError?.();
+      window.removeEventListener('chat-started', handleChatStart);
+      clearTimeout(timeout);
+    };
+  }, []);
 
   const loadSessions = useCallback(async () => {
     if (!window.hermesAPI) return;
     try {
       const list = await window.hermesAPI.listSessions();
       setSessions(
-        (list || []).map((s: { id: string; name?: string; updatedAt?: number }) => ({
+        (list || []).map((s: { id: string; title?: string | null; startedAt?: number }) => ({
           id: s.id,
-          name: s.name || `Session ${s.id.slice(0, 6)}`,
-          agent: 'prawnius',
-          updatedAt: s.updatedAt || Date.now(),
+          name: s.title || `Session ${s.id.slice(0, 6)}`,
+          agent: selectedAgent,
+          updatedAt: s.startedAt || Date.now() / 1000,
+        }))
+      );
+    } catch (_) {}
+  }, [selectedAgent]);
+
+  const loadProfiles = useCallback(async () => {
+    if (!window.hermesAPI) return;
+    try {
+      const list = await window.hermesAPI.listProfiles();
+      setProfiles(
+        (list || []).map((p) => ({
+          name: p.name,
+          isActive: p.isActive,
         }))
       );
     } catch (_) {}
@@ -52,7 +143,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, currentSession]);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
 
   // Nav items for the 80m app
   const navItems = [
@@ -134,26 +229,48 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  // Sessions filtered by selected agent
-  const filteredSessions = sessions.filter((s) => {
-    if (s.agent) return s.agent === selectedAgent;
-    const nameLower = s.name.toLowerCase();
-    return nameLower.includes(selectedAgent);
-  });
-
   return (
     <div className="sidebar-80m">
       {/* Brand Header with logo + ATM mascot */}
       <div className="sidebar-80m-brand">
         <div className="sidebar-80m-brand-row">
-          <span className="sidebar-80m-ready-dot" />
           <Animated80MLogo />
         </div>
-        <img
-          src="https://i.postimg.cc/d18ByxQX/Beige-ATM-with-transparent-screen.png"
-          alt="80M ATM Mascot"
-          className="sidebar-80m-atm"
-        />
+        <div className="sidebar-80m-atm-container">
+          <AtmMascot state={mascotState} />
+        </div>
+      </div>
+
+      {/* Agent Switcher — always visible */}
+      <div className="sidebar-80m-agent-switcher">
+        <select
+          className="sidebar-80m-agent-select"
+          value={selectedAgent}
+          onChange={(e) => {
+            playPowerUpSound();
+            onAgentChange(e.target.value);
+          }}
+        >
+          <option value="default">🤖 Default Agent</option>
+          {/* Known named agents */}
+          {['Prawnius', 'Claudnelius', 'Knowledge Knaight', 'Clawdette'].map((name) => (
+            <option key={name} value={name}>
+              🤖 {name}
+            </option>
+          ))}
+          {/* Any additional Hermes profiles not already listed */}
+          {profiles
+            .filter(
+              (p) =>
+                p.name !== 'default' &&
+                !['Prawnius', 'Claudnelius', 'Knowledge Knaight', 'Clawdette'].includes(p.name)
+            )
+            .map((p) => (
+              <option key={p.name} value={p.name}>
+                🤖 {p.name}
+              </option>
+            ))}
+        </select>
       </div>
 
       {/* Navigation */}
@@ -191,8 +308,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
           >
-            {filteredSessions.length > 0 ? (
-              filteredSessions.map((s) => (
+            {sessions.length > 0 ? (
+              sessions.map((s) => (
                 <button
                   key={s.id}
                   className={`sidebar-80m-session-item${currentSession === s.id ? ' active' : ''}`}
@@ -210,10 +327,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* ATM Mascot at bottom */}
-      <div className="sidebar-80m-mascot">
-        <AtmMascot state="default" />
-      </div>
     </div>
   );
 };

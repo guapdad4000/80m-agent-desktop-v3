@@ -61,7 +61,6 @@ export const AgentTab: React.FC<AgentTabProps> = ({ agent, isActive, isWorking, 
       className={`agent-tab${isActive ? ' active' : ''}`}
       onClick={onClick}
       style={{ '--agent-color': agent.color } as React.CSSProperties}
-      whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       title={`${agent.name} — ${agent.role}`}
     >

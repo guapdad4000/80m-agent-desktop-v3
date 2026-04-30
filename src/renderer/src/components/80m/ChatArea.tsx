@@ -6,17 +6,60 @@ import type { Message } from './Messages';
 interface ChatAreaProps {
   currentSession: string | null;
   onNewSession: () => void;
+  onSessionChange?: (sessionId: string | null) => void;
+  profile?: string;
 }
 
-const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => {
+const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession, onSessionChange, profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(currentSession);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const unsubChunkRef = useRef<(() => void) | null>(null);
   const unsubDoneRef = useRef<(() => void) | null>(null);
   const unsubErrorRef = useRef<(() => void) | null>(null);
   const fullResponseRef = useRef('');
+
+  const playDoneSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.06);
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.15);
+    } catch (_) {
+      // Audio not available
+    }
+  }, []);
+
+  const playTypingSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(150 + Math.random() * 50, ctx.currentTime);
+      
+      gain.gain.setValueAtTime(0.01, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+      
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.05);
+    } catch (_) {
+      // Audio not available
+    }
+  }, []);
 
   // Sync session
   useEffect(() => {
@@ -28,9 +71,12 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => 
     }
   }, [currentSession]);
 
-  // Auto-scroll
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = document.querySelector('.messages-80m');
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages, isLoading]);
 
   // Cleanup subscriptions
@@ -71,14 +117,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => 
 
       let activeSessionId = sessionId;
       if (!activeSessionId) {
+        // Do not invent local/UUID session ids here. Hermes owns session ids.
+        // The first successful response returns the real Hermes session id.
         onNewSession();
-        activeSessionId = `session-${Date.now()}`;
-        setSessionId(activeSessionId);
+        activeSessionId = null;
       }
 
       // Subscribe to streaming events
       unsubChunkRef.current = window.hermesAPI.onChatChunk((chunk: string) => {
         fullResponseRef.current += chunk;
+        playTypingSound();
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant') {
@@ -99,8 +147,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => 
       });
 
       unsubDoneRef.current = window.hermesAPI.onChatDone((newSessionId: string | undefined) => {
-        setSessionId(newSessionId || activeSessionId);
+        const resolvedSessionId = newSessionId || activeSessionId || null;
+        setSessionId(resolvedSessionId);
+        onSessionChange?.(resolvedSessionId);
         setIsLoading(false);
+        playDoneSound();
         unsubChunkRef.current?.();
         unsubDoneRef.current?.();
         unsubErrorRef.current?.();
@@ -121,8 +172,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => 
         unsubErrorRef.current?.();
       });
 
+      // Notify the mascot that we are thinking
+      window.dispatchEvent(new CustomEvent('chat-started'));
+
       try {
-        await window.hermesAPI.sendMessage(text, 'default', activeSessionId || undefined, []);
+        const history = messages
+          .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+          .slice(-20)
+          .map((msg) => ({ role: msg.role, content: msg.content }));
+        await window.hermesAPI.sendMessage(text, profile || 'default', activeSessionId || undefined, history);
       } catch (err) {
         setMessages((prev) => [
           ...prev,
@@ -138,13 +196,12 @@ const ChatArea: React.FC<ChatAreaProps> = ({ currentSession, onNewSession }) => 
         unsubErrorRef.current?.();
       }
     },
-    [sessionId, onNewSession]
+    [sessionId, onNewSession, onSessionChange, playDoneSound, profile, messages]
   );
 
   return (
     <div className="main-80m">
       <Messages messages={messages} isLoading={isLoading} />
-      <div ref={messagesEndRef} />
       <InputBar onSend={handleSend} disabled={isLoading} />
     </div>
   );
