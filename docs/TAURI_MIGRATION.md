@@ -16,10 +16,15 @@ Current foundation:
   presence, Hermes home, locale, connection/model defaults, open URL/path,
   reveal path, and abort chat.
 
-Current blocker:
-- Rust is not installed on this machine yet, so the native Tauri shell has not
-  been compiled here. `npm run typecheck`, `npm run build:tauri-ui`, and the
-  existing Electron `npm run build:unpack` have been verified.
+Current build status:
+- Rust 1.95.0 and the Linux WebKitGTK prerequisites have been installed on this
+  machine.
+- `npm run tauri:build` succeeds and produces Linux AppImage and `.deb` bundles
+  under `src-tauri/target/release/bundle/`.
+- `npm run typecheck`, `npm run build:tauri-ui`, and the existing Electron
+  `npm run build:unpack` have been verified.
+- The Tauri shell is still a compatibility shell: the renderer opens against
+  the bridge, but most Hermes backend commands still need Rust implementations.
 
 ---
 
@@ -241,8 +246,10 @@ npm run tauri build -- --bundles appimage
 ## Pre-requisites Before Starting
 
 1. **Rust installed:** `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+   - Installed locally with Rust 1.95.0.
 2. **Linux WebKit dependencies installed:** follow the current
    [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
+   - Installed locally on this machine.
 3. **Tauri CLI:** installed as `@tauri-apps/cli`.
 4. **Tauri API package:** installed as `@tauri-apps/api`.
 5. **Remove Electron deps:** only after the Tauri build reaches feature parity:
