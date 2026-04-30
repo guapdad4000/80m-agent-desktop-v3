@@ -72,6 +72,7 @@ interface HermesAPI {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    activeProject?: string | null,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
@@ -150,6 +151,10 @@ interface HermesAPI {
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
   setActiveProfile: (name: string) => Promise<boolean>;
+
+  // Projects Sidebar
+  selectProjectDirectory: () => Promise<string | null>;
+  readDirectory: (dirPath: string) => Promise<Array<{ name: string; isDirectory: boolean; path: string }>>;
 
   // Memory
   readMemory: (profile?: string) => Promise<{
@@ -428,6 +433,14 @@ interface HermesAPI {
     logFile?: string,
     lines?: number,
   ) => Promise<{ content: string; path: string }>;
+
+  // Playwright browser control
+  copyFileToWorkspace: (sourcePath: string) => Promise<string | null>;
+  startBrowser: () => Promise<void>;
+  stopBrowser: () => Promise<void>;
+  navigateBrowser: (url: string) => Promise<void>;
+  getBrowserState: () => Promise<{ url: string } | null>;
+  onPlaywrightNavigated: (callback: (url: string) => void) => () => void;
 }
 
 declare global {

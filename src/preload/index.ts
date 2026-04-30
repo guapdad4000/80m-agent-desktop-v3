@@ -111,6 +111,7 @@ const hermesAPI = {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    activeProject?: string | null,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -118,6 +119,7 @@ const hermesAPI = {
       profile,
       resumeSessionId,
       history,
+      activeProject
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
@@ -248,6 +250,13 @@ const hermesAPI = {
     name: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("delete-profile", name),
+
+  // Projects Sidebar
+  selectProjectDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke("select-project-directory"),
+    
+  readDirectory: (dirPath: string): Promise<Array<{ name: string; isDirectory: boolean; path: string }>> =>
+    ipcRenderer.invoke("read-directory", dirPath),
 
   setActiveProfile: (name: string): Promise<boolean> =>
     ipcRenderer.invoke("set-active-profile", name),

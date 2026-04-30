@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Notification } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Notification, dialog } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
@@ -338,6 +338,7 @@ function setupIPC(): void {
       profile?: string,
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
+      activeProject?: string | null,
     ) => {
       if (!isRemoteMode() && !isGatewayRunning()) {
         startGateway(profile);
@@ -407,6 +408,7 @@ function setupIPC(): void {
         profile,
         resumeSessionId,
         history,
+        activeProject,
       );
 
       currentChatAbort = handle.abort;
@@ -461,6 +463,37 @@ function setupIPC(): void {
       return true;
     },
   );
+
+  // Projects Sidebar IPC
+  ipcMain.handle("select-project-directory", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      title: "Select Project Directory"
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return null;
+  });
+
+  ipcMain.handle("read-directory", (_, dirPath) => {
+    try {
+      if (!fs.existsSync(dirPath)) return [];
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      return entries.map(e => ({
+        name: e.name,
+        isDirectory: e.isDirectory(),
+        path: join(dirPath, e.name)
+      })).sort((a, b) => {
+        // Directories first
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    } catch (e) {
+      return [];
+    }
+  });
 
   // Sessions
   ipcMain.handle("list-sessions", (_event, limit?: number, offset?: number) => {
