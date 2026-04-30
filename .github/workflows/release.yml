@@ -115,9 +115,41 @@ jobs:
             dist/*.deb
             dist/latest-linux.yml
 
+  release_win:
+    name: Build Windows
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Package Windows artifacts
+        run: npx electron-builder --win nsis --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-artifacts
+          path: |
+            dist/*.exe
+            dist/*.yml
+
   publish:
     name: Publish Release
-    needs: [prepare, release_mac, release_linux]
+    needs: [prepare, release_mac, release_linux, release_win]
     if: needs.prepare.outputs.tag_exists == 'false'
     runs-on: ubuntu-latest
     steps:
@@ -141,6 +173,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Hermes Desktop ${{ needs.prepare.outputs.tag }}
+          name: 80m Agent Desktop ${{ needs.prepare.outputs.tag }}
           generate_release_notes: true
           files: artifacts/*
