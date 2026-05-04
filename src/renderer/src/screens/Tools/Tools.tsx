@@ -256,20 +256,37 @@ interface McpServer {
   detail: string;
 }
 
+interface ToolGatewayStatus {
+  present: boolean;
+  available: boolean;
+  reason: string;
+  managedTools: string[];
+}
+
 function Tools({ profile }: ToolsProps): React.JSX.Element {
   const { t } = useI18n();
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [toolGateway, setToolGateway] = useState<ToolGatewayStatus | null>(
+    null,
+  );
 
   const loadToolsets = useCallback(async (): Promise<void> => {
     setLoading(true);
-    const [list, mcp] = await Promise.all([
+    const [list, mcp, capabilities] = await Promise.all([
       window.hermesAPI.getToolsets(profile),
       window.hermesAPI.listMcpServers(profile),
+      window.hermesAPI.getHermesCapabilities?.(profile).catch(() => null),
     ]);
     setToolsets(list);
     setMcpServers(mcp);
+    setToolGateway(
+      capabilities
+        ? (capabilities as { toolGateway?: ToolGatewayStatus }).toolGateway ||
+            null
+        : null,
+    );
     setLoading(false);
   }, [profile]);
 
@@ -303,6 +320,34 @@ function Tools({ profile }: ToolsProps): React.JSX.Element {
         <h2 className="tools-title">{t("tools.title")}</h2>
         <p className="tools-subtitle">{t("tools.subtitle")}</p>
       </div>
+
+      {toolGateway && (
+        <div
+          className={`tools-card ${
+            toolGateway.available ? "tools-card-enabled" : "tools-card-disabled"
+          }`}
+          style={{ marginBottom: 18, cursor: "default" }}
+        >
+          <div className="tools-card-top">
+            <ToolIcon toolKey="web" />
+            <span
+              className="tools-card-description"
+              style={{
+                color: toolGateway.available
+                  ? "var(--success)"
+                  : "var(--warning)",
+              }}
+            >
+              {toolGateway.available ? "Managed tools ready" : "Account gated"}
+            </span>
+          </div>
+          <div className="tools-card-label">Nous Tool Gateway</div>
+          <div className="tools-card-description">{toolGateway.reason}</div>
+          <div className="tools-card-description" style={{ marginTop: 8 }}>
+            Managed tools: {toolGateway.managedTools.join(", ") || "none"}
+          </div>
+        </div>
+      )}
 
       <div className="tools-grid">
         {toolsets.map((t) => (

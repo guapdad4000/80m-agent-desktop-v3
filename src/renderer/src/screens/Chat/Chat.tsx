@@ -441,10 +441,38 @@ function Chat({
       });
     });
 
-    const cleanupDone = window.hermesAPI.onChatDone((sessionId) => {
+    const cleanupDone = window.hermesAPI.onChatDone(async (sessionId) => {
       if (sessionId) setHermesSessionId(sessionId);
       setToolProgress(null);
       setIsLoading(false);
+
+      // Auto-TTS: speak the agent's last response
+      try {
+        const autoTts = await window.hermesAPI?.getConfig("voice.auto_tts");
+        if (String(autoTts).toLowerCase() === "true") {
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg && lastMsg.role === "agent") {
+            // Strip markdown artefacts for cleaner TTS
+            const plain = lastMsg.content
+              .replace(/#{1,6}\s/g, "")
+              .replace(/\*\*(.+?)\*\*/g, "$1")
+              .replace(/\*(.+?)\*/g, "$1")
+              .replace(/`{1,3}[^`]*`{1,3}/g, "")
+              .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+              .replace(/>/g, "")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim();
+            if (plain.length > 0) {
+              const mp3Path = await window.hermesAPI?.ttsSpeak(plain);
+              if (mp3Path) {
+                const audio = new Audio(`file://${mp3Path}`);
+                audio.volume = 0.9;
+                audio.play().catch(() => {});
+              }
+            }
+          }
+        }
+      } catch (_) {}
     });
 
     const cleanupError = window.hermesAPI.onChatError((error) => {

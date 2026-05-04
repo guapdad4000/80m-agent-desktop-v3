@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AtmMascot from "./AtmMascot";
 import Animated80MLogo from "../Animated80MLogo";
-import { Plus } from "lucide-react";
+import { Brain, Plus } from "lucide-react";
 
 interface Session {
   id: string;
@@ -79,40 +79,113 @@ const Sidebar: React.FC<SidebarProps> = ({
     | "urgent"
     | "job-done"
   >("default");
+  const activeMascotRequestsRef = React.useRef<Set<string>>(new Set());
+  const mascotTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const mascotPulseRef = React.useRef(0);
 
   useEffect(() => {
     if (!window.hermesAPI) return;
 
-    let timeout: NodeJS.Timeout;
+    const activeMascotRequests = activeMascotRequestsRef.current;
 
-    const unsubChunk = window.hermesAPI.onChatChunk?.(() => {
-      setMascotState("typing");
-      clearTimeout(timeout);
-      timeout = setTimeout(() => setMascotState("default"), 2000);
-    });
+    const clearMascotTimer = () => {
+      if (mascotTimerRef.current) {
+        clearTimeout(mascotTimerRef.current);
+        mascotTimerRef.current = null;
+      }
+    };
 
-    const unsubTool = window.hermesAPI.onChatToolProgress?.(() => {
-      setMascotState("searching");
-      clearTimeout(timeout);
-      timeout = setTimeout(() => setMascotState("default"), 3000);
-    });
+    const hasActiveWork = () => activeMascotRequests.size > 0;
 
-    const unsubDone = window.hermesAPI.onChatDone?.(() => {
-      setMascotState("job-done");
-      clearTimeout(timeout);
-      timeout = setTimeout(() => setMascotState("default"), 3000);
-    });
+    const scheduleWorkingPulse = () => {
+      clearMascotTimer();
+      if (!hasActiveWork()) return;
+      mascotTimerRef.current = setTimeout(() => {
+        const states = ["processing", "searching", "typing"] as const;
+        mascotPulseRef.current = (mascotPulseRef.current + 1) % states.length;
+        setMascotState(states[mascotPulseRef.current]);
+        scheduleWorkingPulse();
+      }, 4500);
+    };
 
-    const unsubError = window.hermesAPI.onChatError?.(() => {
-      setMascotState("error");
-      clearTimeout(timeout);
-      timeout = setTimeout(() => setMascotState("default"), 3000);
-    });
-
-    const handleChatStart = () => {
+    const markActive = (requestId?: string) => {
+      activeMascotRequests.add(requestId || "default");
       setMascotState("processing");
+      scheduleWorkingPulse();
+    };
+
+    const markSettled = (requestId?: string) => {
+      if (requestId) {
+        activeMascotRequests.delete(requestId);
+      } else {
+        activeMascotRequests.clear();
+      }
+      clearMascotTimer();
+    };
+
+    const settleToDefault = (state: "job-done" | "error") => {
+      if (hasActiveWork()) {
+        setMascotState("processing");
+        scheduleWorkingPulse();
+        return;
+      }
+      setMascotState(state);
+      mascotTimerRef.current = setTimeout(
+        () => setMascotState("default"),
+        3500,
+      );
+    };
+
+    const unsubChunk = window.hermesAPI.onChatChunk?.((_chunk, requestId) => {
+      if (requestId && !activeMascotRequests.has(requestId)) {
+        activeMascotRequests.add(requestId);
+      }
+      setMascotState("typing");
+      scheduleWorkingPulse();
+    });
+
+    const unsubTool = window.hermesAPI.onChatToolProgress?.(
+      (_tool, requestId) => {
+        if (requestId && !activeMascotRequests.has(requestId)) {
+          activeMascotRequests.add(requestId);
+        }
+        setMascotState("searching");
+        scheduleWorkingPulse();
+      },
+    );
+
+    const unsubDone = window.hermesAPI.onChatDone?.((_sessionId, requestId) => {
+      markSettled(requestId);
+      settleToDefault("job-done");
+    });
+
+    const unsubError = window.hermesAPI.onChatError?.((_error, requestId) => {
+      markSettled(requestId);
+      settleToDefault("error");
+    });
+
+    const handleChatStart = (event: Event) => {
+      const detail = (event as CustomEvent<{ requestId?: string }>).detail;
+      markActive(detail?.requestId);
     };
     window.addEventListener("chat-started", handleChatStart);
+
+    const handleSpeakingStart = () => {
+      setMascotState("typing");
+      scheduleWorkingPulse();
+    };
+    const handleSpeakingStop = () => {
+      if (hasActiveWork()) {
+        setMascotState("processing");
+        scheduleWorkingPulse();
+      } else {
+        setMascotState("default");
+      }
+    };
+    window.addEventListener("agent-speaking-start", handleSpeakingStart);
+    window.addEventListener("agent-speaking-stop", handleSpeakingStop);
 
     return () => {
       unsubChunk?.();
@@ -120,7 +193,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       unsubDone?.();
       unsubError?.();
       window.removeEventListener("chat-started", handleChatStart);
-      clearTimeout(timeout);
+      window.removeEventListener("agent-speaking-start", handleSpeakingStart);
+      window.removeEventListener("agent-speaking-stop", handleSpeakingStop);
+      clearMascotTimer();
+      activeMascotRequests.clear();
     };
   }, []);
 
@@ -159,6 +235,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [loadSessions, currentSession]);
 
   useEffect(() => {
+    const refresh = () => {
+      void loadSessions();
+    };
+    window.addEventListener("sessions-updated", refresh);
+    return () => window.removeEventListener("sessions-updated", refresh);
+  }, [loadSessions]);
+
+  useEffect(() => {
     loadProfiles();
   }, [loadProfiles]);
 
@@ -195,7 +279,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: "memory",
-      label: "Memory",
+      label: "Second Brain",
       icon: (
         <svg
           viewBox="0 0 24 24"
@@ -305,26 +389,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <option value="default">🤖 Default Agent</option>
-          {/* Known named agents */}
-          {["Prawnius", "Claudnelius", "Knowledge Knaight", "Clawdette"].map(
-            (name) => (
-              <option key={name} value={name}>
-                🤖 {name}
-              </option>
-            ),
-          )}
-          {/* Any additional Hermes profiles not already listed */}
           {profiles
-            .filter(
-              (p) =>
-                p.name !== "default" &&
-                ![
-                  "Prawnius",
-                  "Claudnelius",
-                  "Knowledge Knaight",
-                  "Clawdette",
-                ].includes(p.name),
-            )
+            .filter((p) => p.name !== "default")
             .map((p) => (
               <option key={p.name} value={p.name}>
                 🤖 {p.name}
@@ -332,6 +398,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             ))}
         </select>
       </div>
+
+      <button
+        className={`sidebar-80m-second-brain${activeView === "memory" ? " active" : ""}`}
+        onClick={() => onViewChange("memory")}
+        title="Second Brain"
+      >
+        <Brain size={16} />
+        <span>Second Brain</span>
+      </button>
 
       {/* Navigation */}
       <div className="sidebar-80m-nav">

@@ -45,6 +45,11 @@ interface CronJob {
   deliver: string[];
   skills: string[];
   script: string | null;
+  origin: string | null;
+  model: string | null;
+  provider: string | null;
+  session_id: string | null;
+  session_title: string | null;
 }
 
 type FrequencyType = "minutes" | "hourly" | "daily" | "weekly" | "custom";
@@ -242,6 +247,16 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     } catch {
       return iso;
     }
+  }
+
+  function jobAccent(job: CronJob): string {
+    if (job.state === "paused") return "paused";
+    if (job.state === "completed") return "completed";
+    const target =
+      job.deliver.find((d) => d !== "local") || job.origin || "local";
+    return String(target)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-");
   }
 
   if (loading) {
@@ -555,10 +570,18 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
       ) : (
         <div className="schedules-list">
           {jobs.map((job) => (
-            <div key={job.id} className="schedules-card">
+            <div
+              key={job.id}
+              className={`schedules-card schedules-card-${jobAccent(job)}`}
+            >
               <div className="schedules-card-top">
                 <div className="schedules-card-info">
                   <div className="schedules-card-name">{job.name}</div>
+                  {(job.session_title || job.session_id) && (
+                    <div className="schedules-card-session">
+                      Session: {job.session_title || job.session_id}
+                    </div>
+                  )}
                   <div className="schedules-card-schedule">{job.schedule}</div>
                 </div>
                 <div className="schedules-card-actions">
@@ -645,6 +668,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                     {t("schedules.skills")}: {job.skills.join(", ")}
                   </span>
                 )}
+                {job.model && <span>Model: {job.model}</span>}
               </div>
 
               {job.last_error && (

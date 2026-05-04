@@ -44,4 +44,4 @@ npmRebuild: false
 publish:
   provider: github
   owner: guapdad4000
-  repo: 80m-agent-desktop
+  repo: 80m-agent-desktop-v3

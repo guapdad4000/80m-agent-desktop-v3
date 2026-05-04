@@ -40,6 +40,7 @@ const AtmMascot: React.FC<AtmMascotProps> = ({
         .anim-jackpot .dollar-bill { animation: bill-rain 0.3s linear infinite; }
         .anim-lobster .pincer-move { animation: claw-snap 0.2s infinite; }
         .anim-urgent .atm-character { animation: shake-anim 0.1s infinite; }
+        .anim-default .top-light-glow { animation: top-light-breathe 2.8s ease-in-out infinite; }
         .anim-processing .eye-anim { animation: look-around 2s ease-in-out infinite; }
         .anim-processing .top-light-glow, .anim-processing .top-light-glow rect { fill: #4ade80; filter: drop-shadow(0 0 10px #4ade80); animation: flash-gold 0.4s infinite alternate; }
       `}</style>

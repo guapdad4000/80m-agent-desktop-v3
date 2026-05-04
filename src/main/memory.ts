@@ -4,8 +4,10 @@ import Database from "better-sqlite3";
 import { profileHome, safeWriteFile } from "./utils";
 
 const ENTRY_DELIMITER = "\n§\n";
-const MEMORY_CHAR_LIMIT = 2200;
-const USER_CHAR_LIMIT = 1375;
+const MEMORY_CHAR_LIMIT = Number(
+  process.env.HERMES_DESKTOP_MEMORY_LIMIT || 50000,
+);
+const USER_CHAR_LIMIT = Number(process.env.HERMES_DESKTOP_USER_LIMIT || 20000);
 
 export interface MemoryEntry {
   index: number;

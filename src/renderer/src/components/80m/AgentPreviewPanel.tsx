@@ -1,59 +1,275 @@
-import React, { useState, useEffect } from "react";
+/* eslint-disable react/no-unknown-property */
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ExternalLink,
+  Eye,
+  FileText,
+  FolderOpen,
+  Globe2,
+  Play,
+  X,
+} from "lucide-react";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  activeProject?: string | null;
+  isAgentWorking?: boolean;
 }
 
-const AgentPreviewPanel: React.FC<Props> = ({ isOpen, onClose }) => {
+interface WorkspaceFileChange {
+  root: string;
+  path: string;
+  name: string;
+  relativePath: string;
+  event: string;
+  size: number;
+  modifiedAt: number;
+}
+
+interface DocumentPreviewData {
+  path: string;
+  name: string;
+  exists: boolean;
+  kind:
+    | "text"
+    | "markdown"
+    | "image"
+    | "pdf"
+    | "office"
+    | "directory"
+    | "binary"
+    | "missing";
+  size: number;
+  fileUrl?: string;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
+type PreviewMode = "files" | "browser";
+
+function formatBytes(bytes?: number): string {
+  if (typeof bytes !== "number") return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderFilePreview(
+  preview: DocumentPreviewData | null,
+  loading: boolean,
+): React.JSX.Element {
+  if (loading && !preview) {
+    return <div className="agent-file-preview-empty">Loading preview...</div>;
+  }
+
+  if (!preview) {
+    return (
+      <div className="agent-file-preview-empty">No file activity yet.</div>
+    );
+  }
+
+  if (!preview.exists) {
+    return (
+      <div className="agent-file-preview-empty">
+        {preview.error || "File not found."}
+      </div>
+    );
+  }
+
+  if (preview.kind === "image" && preview.fileUrl) {
+    return (
+      <div className="agent-file-media">
+        <img src={preview.fileUrl} alt={preview.name} />
+      </div>
+    );
+  }
+
+  if (preview.kind === "pdf" && preview.fileUrl) {
+    return (
+      <div className="agent-file-pdf">
+        <iframe src={preview.fileUrl} title={preview.name} />
+      </div>
+    );
+  }
+
+  if (
+    (preview.kind === "text" ||
+      preview.kind === "markdown" ||
+      preview.kind === "office") &&
+    preview.content
+  ) {
+    const lines = preview.content.split("\n").slice(0, 220);
+    return (
+      <pre className="agent-file-code">
+        {lines.map((line, index) => (
+          <div className="agent-file-line" key={`${preview.path}-${index}`}>
+            <span className="agent-file-line-number">{index + 1}</span>
+            <code>{line || " "}</code>
+          </div>
+        ))}
+        {preview.truncated && (
+          <div className="agent-file-preview-empty">Preview truncated.</div>
+        )}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="agent-file-preview-empty">
+      {preview.kind === "directory"
+        ? "Folder selected."
+        : preview.error || "Preview unavailable for this file type."}
+    </div>
+  );
+}
+
+const AgentPreviewPanel: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  activeProject,
+  isAgentWorking = false,
+}) => {
+  const [mode, setMode] = useState<PreviewMode>("files");
   const [url, setUrl] = useState<string | null>(null);
   const [inputUrl, setInputUrl] = useState<string>("");
-  const [isActive, setIsActive] = useState<boolean>(false);
+  const [isBrowserActive, setIsBrowserActive] = useState<boolean>(false);
+  const [watching, setWatching] = useState(false);
+  const [lastChange, setLastChange] = useState<WorkspaceFileChange | null>(
+    null,
+  );
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [filePreview, setFilePreview] = useState<DocumentPreviewData | null>(
+    null,
+  );
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileActionStatus, setFileActionStatus] = useState("");
+
+  const activeProjectName = useMemo(() => {
+    if (!activeProject) return "";
+    return activeProject.split("/").filter(Boolean).pop() || activeProject;
+  }, [activeProject]);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    // Check initial state
-    // @ts-ignore
-    window.hermesAPI.getBrowserState().then((state: any) => {
+    window.hermesAPI.getBrowserState().then((state) => {
       if (state && state.url && state.url !== "about:blank") {
         setUrl(state.url);
         setInputUrl(state.url);
-        setIsActive(true);
+        setIsBrowserActive(true);
       }
     });
 
-    // Listen to playwright navigation
-    // @ts-ignore
     const cleanup = window.hermesAPI.onPlaywrightNavigated((newUrl: string) => {
       if (newUrl !== "about:blank") {
         setUrl(newUrl);
         setInputUrl(newUrl);
-        setIsActive(true);
+        setIsBrowserActive(true);
       }
     });
 
     return cleanup;
   }, [isOpen]);
 
-  const handleStartPlaywright = async () => {
-    // @ts-ignore
+  useEffect(() => {
+    setLastChange(null);
+    setSelectedPath(null);
+    setFilePreview(null);
+  }, [activeProject]);
+
+  useEffect(() => {
+    if (!isOpen || !activeProject) {
+      setWatching(false);
+      return;
+    }
+
+    let cancelled = false;
+    window.hermesAPI
+      .watchWorkspace(activeProject)
+      .then((ok) => {
+        if (!cancelled) setWatching(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setWatching(false);
+      });
+
+    const cleanupChange = window.hermesAPI.onWorkspaceFileChanged((change) => {
+      if (cancelled) return;
+      setMode("files");
+      setLastChange(change);
+      setSelectedPath(change.path);
+    });
+
+    return () => {
+      cancelled = true;
+      cleanupChange();
+      setWatching(false);
+      void window.hermesAPI.unwatchWorkspace();
+    };
+  }, [activeProject, isOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPath) {
+      setFilePreview(null);
+      return;
+    }
+
+    setFileLoading(true);
+    window.hermesAPI
+      .readDocumentPreview(selectedPath)
+      .then((result) => {
+        if (!cancelled) setFilePreview(result as DocumentPreviewData);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFilePreview({
+            path: selectedPath,
+            name: selectedPath.split("/").pop() || selectedPath,
+            exists: false,
+            kind: "missing",
+            size: 0,
+            error: "Preview unavailable.",
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFileLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPath, lastChange?.modifiedAt]);
+
+  const handleStartPlaywright = async (): Promise<void> => {
     await window.hermesAPI.startBrowser();
-    setIsActive(true);
+    setIsBrowserActive(true);
   };
 
-  const handleNavigate = async (e: React.FormEvent) => {
+  const handleNavigate = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!inputUrl) return;
     let target = inputUrl;
     if (!target.startsWith("http://") && !target.startsWith("https://")) {
-      target = "https://" + target;
+      target = `https://${target}`;
     }
-    if (!isActive) {
+    if (!isBrowserActive) {
       await handleStartPlaywright();
     }
-    // @ts-ignore
     await window.hermesAPI.navigateBrowser(target);
+  };
+
+  const runFileAction = async (action: "open" | "reveal"): Promise<void> => {
+    if (!selectedPath) return;
+    const ok =
+      action === "open"
+        ? await window.hermesAPI.openLocalPath(selectedPath)
+        : await window.hermesAPI.revealLocalPath(selectedPath);
+    setFileActionStatus(ok ? "" : "Not found");
+    if (!ok) setTimeout(() => setFileActionStatus(""), 2200);
   };
 
   if (!isOpen) return null;
@@ -62,57 +278,149 @@ const AgentPreviewPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     <div className="agent-preview-panel">
       <div className="agent-preview-header">
         <div className="agent-preview-title">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
-          Agent Browser Preview
+          <Eye size={16} />
+          Live Preview
         </div>
-        <button className="agent-preview-close" onClick={onClose} title="Close Preview">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+        <div className="agent-preview-tabs" role="tablist">
+          <button
+            className={`agent-preview-tab ${mode === "files" ? "active" : ""}`}
+            onClick={() => setMode("files")}
+            title="Files"
+            type="button"
+          >
+            <FileText size={14} />
+            <span>Files</span>
+          </button>
+          <button
+            className={`agent-preview-tab ${mode === "browser" ? "active" : ""}`}
+            onClick={() => setMode("browser")}
+            title="Browser"
+            type="button"
+          >
+            <Globe2 size={14} />
+            <span>Browser</span>
+          </button>
+        </div>
+        <button
+          className="agent-preview-close"
+          onClick={onClose}
+          title="Close Preview"
+          type="button"
+        >
+          <X size={16} />
         </button>
       </div>
 
-      <div className="agent-preview-toolbar" style={{ display: 'flex', padding: '6px 12px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', gap: '8px' }}>
-        <form onSubmit={handleNavigate} style={{ display: 'flex', flex: 1, gap: '6px' }}>
-          <input 
-            type="text" 
-            className="input" 
-            style={{ flex: 1, padding: '4px 8px', fontSize: '12px' }} 
-            placeholder="Agent Target URL..." 
-            value={inputUrl} 
-            onChange={(e) => setInputUrl(e.target.value)} 
-          />
-          <button type="submit" className="btn btn-primary btn-sm" style={{ padding: '4px 12px', fontSize: '12px' }}>
-            Go
-          </button>
-        </form>
-      </div>
-
-      <div className="agent-preview-content">
-        {!isActive || !url ? (
-          <div className="agent-preview-placeholder">
-            <div className="agent-preview-spinner"></div>
-            <p>Waiting for agent browser activity...</p>
-            <span className="agent-preview-hint">Playwright session inactive</span>
-            {!isActive && (
-              <button className="btn btn-secondary btn-sm" onClick={handleStartPlaywright} style={{ marginTop: '10px' }}>
-                Start Background Browser
+      {mode === "browser" ? (
+        <>
+          <div className="agent-preview-toolbar">
+            <form onSubmit={handleNavigate} className="agent-preview-url-form">
+              <input
+                type="text"
+                className="input agent-preview-url-input"
+                placeholder="Agent target URL"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm agent-preview-go-btn"
+                title="Go"
+              >
+                Go
               </button>
+            </form>
+          </div>
+
+          <div className="agent-preview-content">
+            {!isBrowserActive || !url ? (
+              <div className="agent-preview-placeholder">
+                <div className="agent-preview-spinner"></div>
+                <p>Waiting for browser activity...</p>
+                <span className="agent-preview-hint">
+                  Playwright session inactive
+                </span>
+                {!isBrowserActive && (
+                  <button
+                    className="btn btn-secondary btn-sm agent-preview-start-btn"
+                    onClick={handleStartPlaywright}
+                    title="Start Browser"
+                    type="button"
+                  >
+                    <Play size={13} />
+                    Start
+                  </button>
+                )}
+              </div>
+            ) : (
+              <webview
+                src={url}
+                className="agent-preview-webview"
+                allowpopups={true}
+              />
             )}
           </div>
-        ) : (
-          <webview 
-            src={url} 
-            style={{ width: '100%', height: '100%' }}
-            // @ts-ignore
-            allowpopups="true"
-          />
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="agent-file-preview">
+          <div className="agent-file-preview-header">
+            <div className="agent-file-preview-title">
+              <span className="agent-file-project">
+                {activeProjectName || "No project"}
+              </span>
+              <span className="agent-file-state">
+                {watching
+                  ? isAgentWorking
+                    ? "Watching active run"
+                    : "Watching"
+                  : activeProject
+                    ? "Watcher idle"
+                    : "No project selected"}
+              </span>
+            </div>
+            <div className="agent-file-actions">
+              <button
+                type="button"
+                onClick={() => void runFileAction("open")}
+                disabled={!selectedPath}
+                title="Open"
+              >
+                <ExternalLink size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void runFileAction("reveal")}
+                disabled={!selectedPath}
+                title="Reveal"
+              >
+                <FolderOpen size={13} />
+              </button>
+            </div>
+          </div>
+
+          {lastChange && (
+            <div className="agent-file-meta">
+              <span className="agent-file-path">{lastChange.relativePath}</span>
+              <span>{formatBytes(lastChange.size)}</span>
+              {fileActionStatus && <span>{fileActionStatus}</span>}
+            </div>
+          )}
+
+          <div className="agent-file-preview-content">
+            {!activeProject ? (
+              <div className="agent-file-preview-empty">
+                Select a project folder.
+              </div>
+            ) : !watching ? (
+              <div className="agent-file-preview-empty">
+                Workspace watcher unavailable.
+              </div>
+            ) : (
+              renderFilePreview(filePreview, fileLoading)
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { ChildProcess, spawn } from "child_process";
+import { ChildProcess, execFile, spawn } from "child_process";
 import {
   existsSync,
   readFileSync,
@@ -18,6 +18,7 @@ import {
   HERMES_PYTHON,
   HERMES_SCRIPT,
   getEnhancedPath,
+  getHermesVersion,
 } from "./installer";
 import {
   getModelConfig,
@@ -26,7 +27,7 @@ import {
   getConnectionConfig,
   getPlatformEnabled,
 } from "./config";
-import { stripAnsi } from "./utils";
+import { profileHome, safeWriteFile, stripAnsi } from "./utils";
 
 const LOCAL_API_URL = "http://127.0.0.1:8642";
 
@@ -137,6 +138,568 @@ const URL_KEY_MAP: Array<{ pattern: RegExp; envKey: string }> = [
 
 interface ChatHandle {
   abort: () => void;
+}
+
+interface ApiRequestResult<T = unknown> {
+  ok: boolean;
+  status: number | null;
+  data: T | null;
+  error?: string;
+}
+
+export interface HermesDesktopCapabilities {
+  version: string | null;
+  semver: string | null;
+  isAtLeastV12: boolean;
+  updateAvailable: boolean;
+  api: {
+    ok: boolean;
+    status: number | null;
+    url: string;
+    error?: string;
+    features: Record<string, boolean>;
+    endpoints: Record<string, { method?: string; path?: string }>;
+    models: string[];
+  };
+  toolGateway: {
+    present: boolean;
+    available: boolean;
+    reason: string;
+    managedTools: string[];
+  };
+  supports: {
+    chatCompletions: boolean;
+    responses: boolean;
+    runs: boolean;
+    runEvents: boolean;
+    runStop: boolean;
+    toolProgress: boolean;
+    sessionContinuity: boolean;
+    curator: boolean;
+  };
+}
+
+export interface HermesRunStartResult {
+  success: boolean;
+  runId?: string;
+  status?: string;
+  sessionId?: string;
+  error?: string;
+  raw?: unknown;
+}
+
+export interface HermesRunStatusResult {
+  success: boolean;
+  runId?: string;
+  status?: string;
+  sessionId?: string;
+  output?: string;
+  usage?: unknown;
+  error?: string;
+  raw?: unknown;
+}
+
+function parseHermesSemver(version: string | null): string | null {
+  return version?.match(/v(\d+\.\d+\.\d+)/)?.[1] || null;
+}
+
+function semverAtLeast(value: string | null, minimum: string): boolean {
+  if (!value) return false;
+  const current = value.split(".").map((part) => Number(part));
+  const target = minimum.split(".").map((part) => Number(part));
+  for (let i = 0; i < target.length; i += 1) {
+    const a = current[i] || 0;
+    const b = target[i] || 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return true;
+}
+
+function runHermesText(args: string[], timeout = 45000): Promise<string> {
+  if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
+    return Promise.resolve("");
+  }
+
+  return new Promise((resolve) => {
+    execFile(
+      HERMES_PYTHON,
+      [HERMES_SCRIPT, ...args],
+      {
+        cwd: HERMES_REPO,
+        env: {
+          ...process.env,
+          PATH: getEnhancedPath(),
+          HOME: homedir(),
+          HERMES_HOME,
+          TERM: "dumb",
+        },
+        timeout,
+        maxBuffer: 1024 * 1024,
+      },
+      (_error, stdout, stderr) => {
+        resolve(stripAnsi(stdout || stderr || ""));
+      },
+    );
+  });
+}
+
+function runHermesStatusText(): Promise<string> {
+  return runHermesText(["status"]);
+}
+
+function parseToolGateway(
+  statusText: string,
+): HermesDesktopCapabilities["toolGateway"] {
+  const section = statusText.match(
+    /◆ Nous Tool Gateway([\s\S]*?)(?:\n◆ |\n─|$)/,
+  )?.[1];
+  if (!section) {
+    return {
+      present: false,
+      available: false,
+      reason: "Status output did not include Nous Tool Gateway.",
+      managedTools: [],
+    };
+  }
+
+  const unavailable =
+    /does not include|upgrade|free-tier|not included|not available/i.test(
+      section,
+    );
+  const managedTools = ["web", "image_gen", "tts", "browser"];
+  return {
+    present: true,
+    available: !unavailable,
+    reason: section
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(" "),
+    managedTools: unavailable ? [] : managedTools,
+  };
+}
+
+function apiJson<T = unknown>(
+  path: string,
+  profile?: string,
+  method = "GET",
+  body?: unknown,
+): Promise<ApiRequestResult<T>> {
+  return new Promise((resolveResult) => {
+    try {
+      const target = new URL(path, getApiUrl());
+      const mod = target.protocol === "https:" ? https : http;
+      const payload =
+        body == null ? undefined : Buffer.from(JSON.stringify(body), "utf-8");
+      const headers: Record<string, string | number> = {
+        ...getApiServerAuthHeader(profile),
+        Accept: "application/json",
+      };
+      if (payload) {
+        headers["Content-Type"] = "application/json";
+        headers["Content-Length"] = payload.byteLength;
+      }
+
+      const req = mod.request(
+        target,
+        {
+          method,
+          timeout: 8000,
+          headers,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk: Buffer) => chunks.push(chunk));
+          res.on("end", () => {
+            const text = Buffer.concat(chunks).toString("utf-8");
+            try {
+              resolveResult({
+                ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
+                status: res.statusCode || null,
+                data: text ? (JSON.parse(text) as T) : null,
+              });
+            } catch {
+              resolveResult({
+                ok: false,
+                status: res.statusCode || null,
+                data: null,
+                error: text.slice(0, 500) || "Invalid JSON response.",
+              });
+            }
+          });
+        },
+      );
+      req.on("error", (error) =>
+        resolveResult({
+          ok: false,
+          status: null,
+          data: null,
+          error: error.message,
+        }),
+      );
+      req.on("timeout", () => {
+        req.destroy();
+        resolveResult({
+          ok: false,
+          status: null,
+          data: null,
+          error: "timeout",
+        });
+      });
+      if (payload) req.write(payload);
+      req.end();
+    } catch (error) {
+      resolveResult({
+        ok: false,
+        status: null,
+        data: null,
+        error: error instanceof Error ? error.message : "invalid request",
+      });
+    }
+  });
+}
+
+export async function getHermesCapabilities(
+  profile?: string,
+): Promise<HermesDesktopCapabilities> {
+  const [version, statusText, curatorText, capabilities, models] =
+    await Promise.all([
+      getHermesVersion(),
+      runHermesStatusText(),
+      runHermesText(["curator", "status"], 30000),
+      apiJson<{
+        features?: Record<string, boolean>;
+        endpoints?: Record<string, { method?: string; path?: string }>;
+      }>("/v1/capabilities", profile),
+      apiJson<{ data?: Array<{ id?: string }> }>("/v1/models", profile),
+    ]);
+
+  const features = capabilities.data?.features || {};
+  const endpoints = capabilities.data?.endpoints || {};
+  const semver = parseHermesSemver(version);
+  const apiOk = capabilities.ok;
+
+  return {
+    version,
+    semver,
+    isAtLeastV12: semverAtLeast(semver, "0.12.0"),
+    updateAvailable:
+      /update available|commits behind|run 'hermes update'/i.test(
+        `${version || ""}\n${statusText}`,
+      ),
+    api: {
+      ok: apiOk,
+      status: capabilities.status,
+      url: getApiUrl(),
+      error: capabilities.error,
+      features,
+      endpoints,
+      models: (models.data?.data || [])
+        .map((entry) => entry.id)
+        .filter((id): id is string => Boolean(id)),
+    },
+    toolGateway: parseToolGateway(statusText),
+    supports: {
+      chatCompletions: Boolean(features.chat_completions),
+      responses: Boolean(features.responses_api),
+      runs: Boolean(features.run_submission && features.run_status),
+      runEvents: Boolean(features.run_events_sse),
+      runStop: Boolean(features.run_stop),
+      toolProgress: Boolean(features.tool_progress_events),
+      sessionContinuity: Boolean(features.session_continuity_header),
+      curator:
+        /curator:\s*enabled|agent-created skills|least recently used/i.test(
+          curatorText,
+        ),
+    },
+  };
+}
+
+export async function startHermesRun(
+  input: string,
+  profile?: string,
+  options: {
+    sessionId?: string;
+    instructions?: string;
+    previousResponseId?: string;
+    conversationHistory?: Array<{ role: string; content: string }>;
+  } = {},
+): Promise<HermesRunStartResult> {
+  const result = await apiJson<{
+    run_id?: string;
+    status?: string;
+    session_id?: string;
+  }>("/v1/runs", profile, "POST", {
+    input,
+    session_id: options.sessionId,
+    instructions: options.instructions,
+    previous_response_id: options.previousResponseId,
+    conversation_history: options.conversationHistory,
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: result.error || `HTTP ${result.status || "error"}`,
+      raw: result.data,
+    };
+  }
+  return {
+    success: true,
+    runId: result.data?.run_id,
+    status: result.data?.status,
+    sessionId: result.data?.session_id,
+    raw: result.data,
+  };
+}
+
+export async function getHermesRun(
+  runId: string,
+  profile?: string,
+): Promise<HermesRunStatusResult> {
+  const result = await apiJson<{
+    run_id?: string;
+    status?: string;
+    session_id?: string;
+    output?: string;
+    usage?: unknown;
+  }>(`/v1/runs/${encodeURIComponent(runId)}`, profile);
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: result.error || `HTTP ${result.status || "error"}`,
+      raw: result.data,
+    };
+  }
+  return {
+    success: true,
+    runId: result.data?.run_id,
+    status: result.data?.status,
+    sessionId: result.data?.session_id,
+    output: result.data?.output,
+    usage: result.data?.usage,
+    raw: result.data,
+  };
+}
+
+export async function stopHermesRun(
+  runId: string,
+  profile?: string,
+): Promise<HermesRunStatusResult> {
+  const result = await apiJson<{ status?: string }>(
+    `/v1/runs/${encodeURIComponent(runId)}/stop`,
+    profile,
+    "POST",
+    {},
+  );
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: result.error || `HTTP ${result.status || "error"}`,
+      raw: result.data,
+    };
+  }
+  return {
+    success: true,
+    runId,
+    status: result.data?.status,
+    raw: result.data,
+  };
+}
+
+const LONG_HAUL_ENV_MINIMUMS: Record<string, number> = {
+  HERMES_MAX_ITERATIONS: 300,
+  HERMES_API_TIMEOUT: 7200,
+  HERMES_API_CALL_STALE_TIMEOUT: 7200,
+  HERMES_STREAM_READ_TIMEOUT: 7200,
+  HERMES_STREAM_STALE_TIMEOUT: 7200,
+  TERMINAL_TIMEOUT: 3600,
+  TERMINAL_LIFETIME_SECONDS: 86400,
+  BROWSER_INACTIVITY_TIMEOUT: 1800,
+  BROWSER_COMMAND_TIMEOUT: 600,
+  BROWSER_DIALOG_TIMEOUT_S: 1800,
+  HERMES_RESTART_DRAIN_TIMEOUT: 3600,
+  HERMES_AUTO_CONTINUE_FRESHNESS: 86400,
+};
+
+const LONG_HAUL_ENV_EXACT: Record<string, string> = {
+  HERMES_AGENT_TIMEOUT: "0",
+  HERMES_CRON_TIMEOUT: "0",
+};
+
+const LONG_HAUL_CONFIG_MINIMUMS = [
+  ["agent", "max_turns", 300],
+  ["agent", "restart_drain_timeout", 3600],
+  ["agent", "gateway_timeout_warning", 1800],
+  ["agent", "gateway_notify_interval", 600],
+  ["agent", "gateway_auto_continue_freshness", 86400],
+  ["terminal", "timeout", 3600],
+  ["terminal", "lifetime_seconds", 86400],
+  ["browser", "inactivity_timeout", 1800],
+  ["browser", "command_timeout", 600],
+  ["browser", "dialog_timeout_s", 1800],
+  ["file_read_max_chars", "", 300000],
+  ["tool_output", "max_bytes", 200000],
+  ["tool_output", "max_lines", 5000],
+] as const;
+
+const LONG_HAUL_CONFIG_EXACT = [["agent", "gateway_timeout", 0]] as const;
+
+function parsePositiveNumber(value: string | undefined): number | null {
+  if (value == null || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ensureEnvNumberAtLeast(
+  key: string,
+  minimum: number,
+  profile?: string,
+): boolean {
+  const existing = readEnv(profile)[key] || process.env[key];
+  const parsed = parsePositiveNumber(existing);
+  if (parsed == null || parsed < minimum) {
+    setEnvValue(key, String(minimum), profile);
+    return true;
+  }
+  return false;
+}
+
+function ensureEnvExact(key: string, value: string, profile?: string): boolean {
+  const existing = readEnv(profile)[key] || process.env[key];
+  if (existing !== value) {
+    setEnvValue(key, value, profile);
+    return true;
+  }
+  return false;
+}
+
+function applyLongHaulEnv(env: Record<string, string>): Record<string, string> {
+  for (const [key, minimum] of Object.entries(LONG_HAUL_ENV_MINIMUMS)) {
+    const parsed = parsePositiveNumber(env[key] || process.env[key]);
+    env[key] = String(parsed != null && parsed >= minimum ? parsed : minimum);
+  }
+  for (const [key, value] of Object.entries(LONG_HAUL_ENV_EXACT)) {
+    env[key] = value;
+  }
+  return env;
+}
+
+function leadingSpaces(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+function splitLineValue(line: string): { value: string; comment: string } {
+  const hash = line.indexOf("#");
+  const body = hash >= 0 ? line.slice(0, hash) : line;
+  return {
+    value: body.split(":").slice(1).join(":").trim(),
+    comment: hash >= 0 ? ` ${line.slice(hash).trim()}` : "",
+  };
+}
+
+function ensureYamlNumber(
+  content: string,
+  section: string,
+  key: string,
+  value: number,
+  mode: "minimum" | "exact",
+): string {
+  const lines = content.split(/\r?\n/);
+  const sectionRe = key
+    ? new RegExp(`^${section}:\\s*(?:#.*)?$`)
+    : new RegExp(`^${section}:\\s*.*$`);
+  const sectionIndex = lines.findIndex((line) =>
+    sectionRe.test(line.trimEnd()),
+  );
+
+  if (sectionIndex === -1) {
+    if (lines.length && lines[lines.length - 1].trim() !== "") lines.push("");
+    if (key) {
+      lines.push(`${section}:`, `  ${key}: ${value}`);
+    } else {
+      lines.push(`${section}: ${value}`);
+    }
+    return lines.join("\n");
+  }
+
+  if (!key) {
+    const { value: raw, comment } = splitLineValue(lines[sectionIndex]);
+    const current = Number(raw.replace(/^["']|["']$/g, ""));
+    if (mode === "minimum" && Number.isFinite(current) && current >= value) {
+      return content;
+    }
+    lines[sectionIndex] = `${section}: ${value}${comment}`;
+    return lines.join("\n");
+  }
+
+  const sectionIndent = leadingSpaces(lines[sectionIndex]);
+  let insertAt = lines.length;
+  let keyIndex = -1;
+  const keyRe = new RegExp(`^\\s*${key}:`);
+
+  for (let i = sectionIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const indent = leadingSpaces(line);
+    if (indent <= sectionIndent && !trimmed.startsWith("#")) {
+      insertAt = i;
+      break;
+    }
+
+    if (indent > sectionIndent && keyRe.test(trimmed)) {
+      keyIndex = i;
+      break;
+    }
+  }
+
+  const rendered = `${" ".repeat(sectionIndent + 2)}${key}: ${value}`;
+  if (keyIndex === -1) {
+    lines.splice(insertAt, 0, rendered);
+    return lines.join("\n");
+  }
+
+  const { value: raw, comment } = splitLineValue(lines[keyIndex]);
+  const current = Number(raw.replace(/^["']|["']$/g, ""));
+  if (mode === "minimum" && Number.isFinite(current) && current >= value) {
+    return content;
+  }
+
+  lines[keyIndex] = `${rendered}${comment}`;
+  return lines.join("\n");
+}
+
+function ensureLongHaulConfig(profile?: string): boolean {
+  let changed = false;
+  for (const [key, minimum] of Object.entries(LONG_HAUL_ENV_MINIMUMS)) {
+    changed = ensureEnvNumberAtLeast(key, minimum, profile) || changed;
+  }
+  for (const [key, value] of Object.entries(LONG_HAUL_ENV_EXACT)) {
+    changed = ensureEnvExact(key, value, profile) || changed;
+  }
+
+  const configPath = join(profileHome(profile), "config.yaml");
+  let content = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "";
+  const originalContent = content;
+  for (const [section, key, value] of LONG_HAUL_CONFIG_MINIMUMS) {
+    content = ensureYamlNumber(content, section, key, value, "minimum");
+  }
+  for (const [section, key, value] of LONG_HAUL_CONFIG_EXACT) {
+    content = ensureYamlNumber(content, section, key, value, "exact");
+  }
+  if (content !== originalContent || !existsSync(configPath)) {
+    safeWriteFile(
+      configPath,
+      content.endsWith("\n") ? content : `${content}\n`,
+    );
+    changed = true;
+  }
+  return changed;
 }
 
 // ────────────────────────────────────────────────────
@@ -524,6 +1087,7 @@ function sendMessageViaCli(
   resumeSessionId?: string,
   activeProject?: string | null,
 ): ChatHandle {
+  ensureLongHaulConfig(profile);
   const mc = getModelConfig(profile);
   const profileEnv = readEnv(profile);
 
@@ -548,13 +1112,13 @@ function sendMessageViaCli(
     args.push("-m", mc.model);
   }
 
-  const env: Record<string, string> = {
+  const env: Record<string, string> = applyLongHaulEnv({
     ...(process.env as Record<string, string>),
     PATH: getEnhancedPath(),
     HOME: homedir(),
     HERMES_HOME: HERMES_HOME,
     PYTHONUNBUFFERED: "1",
-  };
+  });
 
   // Inject all API keys from the profile .env so the CLI can access them
   const KNOWN_API_KEYS = [
@@ -714,6 +1278,12 @@ export async function sendMessage(
   activeProject?: string | null,
 ): Promise<ChatHandle> {
   ensureInitialized();
+  const longHaulChanged = ensureLongHaulConfig(profile);
+  if (!isRemoteMode() && longHaulChanged && isGatewayRunning()) {
+    stopGateway(true);
+    startGateway(profile);
+    apiServerAvailable = false;
+  }
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {
@@ -794,19 +1364,20 @@ let gatewayStartedByApp = false;
 
 export function startGateway(profile?: string): boolean {
   ensureInitialized();
+  ensureLongHaulConfig(profile);
   if (isGatewayRunning()) return false;
 
   const apiServerKey = ensureApiServerKey(profile);
 
   // Build gateway env with profile API keys
-  const gatewayEnv: Record<string, string> = {
+  const gatewayEnv: Record<string, string> = applyLongHaulEnv({
     ...(process.env as Record<string, string>),
     PATH: getEnhancedPath(),
     HOME: homedir(),
     HERMES_HOME: HERMES_HOME,
     API_SERVER_ENABLED: "true", // Ensure API server starts with gateway
     API_SERVER_KEY: apiServerKey,
-  };
+  });
 
   // Inject ALL profile API keys so the gateway can authenticate with any provider.
   const profileEnv = readEnv(profile);

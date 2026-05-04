@@ -11,6 +11,27 @@ interface ChatAreaProps {
   activeProject?: string | null;
 }
 
+interface ActiveRequest {
+  id: string;
+  sessionId: string | null;
+  localKey: string;
+  response: string;
+}
+
+function localFileUrl(filePath: string): string {
+  return `file://${filePath.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function plainSpeechText(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*#_~>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const ChatArea: React.FC<ChatAreaProps> = ({
   currentSession,
   onNewSession,
@@ -19,13 +40,21 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   activeProject,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(currentSession);
+  const [loadingRequestId, setLoadingRequestId] = useState<string | null>(null);
 
-  const unsubChunkRef = useRef<(() => void) | null>(null);
-  const unsubDoneRef = useRef<(() => void) | null>(null);
-  const unsubErrorRef = useRef<(() => void) | null>(null);
-  const fullResponseRef = useRef("");
+  const messagesRef = useRef<Message[]>([]);
+  const currentSessionRef = useRef<string | null>(currentSession);
+  const activeRequestsRef = useRef<Record<string, ActiveRequest>>({});
+  const visibleRequestIdRef = useRef<string | null>(null);
+  const pendingMessagesRef = useRef<Record<string, Message[]>>({});
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    currentSessionRef.current = currentSession;
+  }, [currentSession]);
 
   const playDoneSound = useCallback(() => {
     try {
@@ -42,20 +71,17 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.15);
     } catch (_) {
-      // Audio not available
+      // Audio not available.
     }
   }, []);
 
-  const playTTS = useCallback((text: string) => {
+  const playBrowserTTS = useCallback((text: string) => {
     try {
-      if (!window.speechSynthesis) return;
-      window.speechSynthesis.cancel(); // clear previous
-      const utterance = new SpeechSynthesisUtterance(
-        text.replace(/[*#_~`]/g, ""),
-      );
-      utterance.rate = 1.1;
-      utterance.pitch = 0.9;
-      // Emit event so AtmMascot or WaveformIndicator can react
+      if (!window.speechSynthesis) return false;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.05;
+      utterance.pitch = 0.95;
       utterance.onstart = () =>
         window.dispatchEvent(new CustomEvent("agent-speaking-start"));
       utterance.onend = () =>
@@ -63,10 +89,42 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       utterance.onerror = () =>
         window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
       window.speechSynthesis.speak(utterance);
+      return true;
     } catch (err) {
-      console.warn("TTS failed:", err);
+      console.warn("Browser TTS failed:", err);
+      return false;
     }
   }, []);
+
+  const playTTS = useCallback(
+    async (text: string) => {
+      const clean = plainSpeechText(text);
+      if (!clean) return;
+
+      window.dispatchEvent(new CustomEvent("agent-speaking-start"));
+      try {
+        const audioPath = await window.hermesAPI?.ttsSpeak(clean);
+        if (audioPath) {
+          const audio = new Audio(localFileUrl(audioPath));
+          audio.volume = 0.9;
+          audio.onended = () =>
+            window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
+          audio.onerror = () => {
+            window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
+            playBrowserTTS(clean);
+          };
+          await audio.play();
+          return;
+        }
+      } catch (err) {
+        console.warn("Hermes TTS failed:", err);
+      }
+
+      window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
+      playBrowserTTS(clean);
+    },
+    [playBrowserTTS],
+  );
 
   const playTypingSound = useCallback(() => {
     try {
@@ -86,86 +144,113 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.05);
     } catch (_) {
-      // Audio not available
+      // Audio not available.
     }
   }, []);
 
-  // Sync session
-  useEffect(() => {
-    setSessionId(currentSession);
-    if (currentSession) {
-      loadSession(currentSession);
-    } else {
-      setMessages([]);
-    }
-  }, [currentSession]);
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    const container = document.querySelector(".messages-80m");
-    if (container) {
-      container.scrollTop = container.scrollHeight;
-    }
-  }, [messages, isLoading]);
-
-  // Cleanup subscriptions
-  useEffect(() => {
-    return () => {
-      unsubChunkRef.current?.();
-      unsubDoneRef.current?.();
-      unsubErrorRef.current?.();
-    };
+  const findRequestForSession = useCallback((targetSession: string | null) => {
+    return Object.values(activeRequestsRef.current).find((req) =>
+      targetSession ? req.sessionId === targetSession : req.sessionId === null,
+    );
   }, []);
+
+  const resolveRequest = useCallback((requestId?: string) => {
+    if (requestId && activeRequestsRef.current[requestId]) {
+      return activeRequestsRef.current[requestId];
+    }
+    return Object.values(activeRequestsRef.current)[0] || null;
+  }, []);
+
+  const syncVisibleLoading = useCallback(
+    (targetSession: string | null = currentSessionRef.current) => {
+      const visibleReq = findRequestForSession(targetSession);
+      visibleRequestIdRef.current = visibleReq?.id || null;
+      setLoadingRequestId(visibleReq?.id || null);
+    },
+    [findRequestForSession],
+  );
 
   const loadSession = useCallback(async (id: string) => {
     if (!window.hermesAPI) return;
     try {
       const msgs = await window.hermesAPI.getSessionMessages(id);
-      setMessages(
-        // @ts-ignore
-        (msgs || []).map((m: any, i: number) => ({
-          id: `${id}-${i}`,
-          role: m.role as "user" | "assistant" | "system" | "tool",
-          content: m.content,
-          tool_calls: m.tool_calls,
-          tool_name: m.tool_name,
-        })),
-      );
-    } catch (_) {}
+      const loaded = (msgs || []).map((m, i) => ({
+        id: `${id}-${m.id || i}`,
+        role: m.role as "user" | "assistant" | "system" | "tool",
+        content: m.content,
+        tool_calls: m.tool_calls,
+        tool_name: m.tool_name,
+      }));
+
+      const pending = Object.values(activeRequestsRef.current)
+        .filter((req) => req.sessionId === id)
+        .flatMap((req) => [
+          ...(pendingMessagesRef.current[req.localKey] || []),
+          ...(req.response
+            ? [
+                {
+                  id: `assistant-${req.id}`,
+                  role: "assistant" as const,
+                  content: req.response,
+                },
+              ]
+            : []),
+        ]);
+      setMessages([...loaded, ...pending]);
+    } catch (_) {
+      // Session load failures leave the current view unchanged.
+    }
   }, []);
 
-  const handleSend = useCallback(
-    async (text: string) => {
-      if (!window.hermesAPI) return;
+  useEffect(() => {
+    const req = findRequestForSession(currentSession);
+    visibleRequestIdRef.current = req?.id || null;
+    setLoadingRequestId(req?.id || null);
 
-      const userMsg: Message = {
-        id: `user-${Date.now()}`,
-        role: "user",
-        content: text,
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      setIsLoading(true);
-      fullResponseRef.current = "";
+    if (currentSession) {
+      loadSession(currentSession);
+    } else {
+      setMessages(
+        req
+          ? [
+              ...(pendingMessagesRef.current[req.localKey] || []),
+              ...(req.response
+                ? [
+                    {
+                      id: `assistant-${req.id}`,
+                      role: "assistant" as const,
+                      content: req.response,
+                    },
+                  ]
+                : []),
+            ]
+          : [],
+      );
+    }
+  }, [currentSession, findRequestForSession, loadSession]);
 
-      let activeSessionId = sessionId;
-      if (!activeSessionId) {
-        // Do not invent local/UUID session ids here. Hermes owns session ids.
-        // The first successful response returns the real Hermes session id.
-        onNewSession();
-        activeSessionId = null;
-      }
+  useEffect(() => {
+    const container = document.querySelector(".messages-80m");
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages, loadingRequestId]);
 
-      // Subscribe to streaming events
-      unsubChunkRef.current = window.hermesAPI.onChatChunk((chunk: string) => {
-        fullResponseRef.current += chunk;
+  useEffect(() => {
+    if (!window.hermesAPI) return;
+
+    const cleanupChunk = window.hermesAPI.onChatChunk(
+      (chunk: string, requestId?: string) => {
+        const req = resolveRequest(requestId);
+        if (!req) return;
+        req.response += chunk;
+        if (visibleRequestIdRef.current !== req.id) return;
+
         playTypingSound();
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === "assistant") {
-            return [
-              ...prev.slice(0, -1),
-              { ...last, content: fullResponseRef.current },
-            ];
+            return [...prev.slice(0, -1), { ...last, content: req.response }];
           }
           return [
             ...prev,
@@ -176,30 +261,54 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             },
           ];
         });
-      });
+      },
+    );
 
-      unsubDoneRef.current = window.hermesAPI.onChatDone(
-        (newSessionId: string | undefined) => {
-          const resolvedSessionId = newSessionId || activeSessionId || null;
-          setSessionId(resolvedSessionId);
-          onSessionChange?.(resolvedSessionId);
+    const cleanupDone = window.hermesAPI.onChatDone(
+      (newSessionId: string | undefined, requestId?: string) => {
+        const req = resolveRequest(requestId);
+        if (!req) return;
 
-          // Re-fetch the entire session so tool messages are captured from SQLite
-          if (resolvedSessionId) {
-            loadSession(resolvedSessionId);
-          }
+        const isVisible = visibleRequestIdRef.current === req.id;
+        const resolvedSessionId = newSessionId || req.sessionId || null;
+        delete pendingMessagesRef.current[req.localKey];
+        delete activeRequestsRef.current[req.id];
+        syncVisibleLoading();
+        window.dispatchEvent(new CustomEvent("sessions-updated"));
+        window.dispatchEvent(
+          new CustomEvent("chat-finished", {
+            detail: { requestId: req.id, sessionId: resolvedSessionId },
+          }),
+        );
 
-          setIsLoading(false);
-          playDoneSound();
-          playTTS(fullResponseRef.current);
+        if (!isVisible) return;
 
-          unsubChunkRef.current?.();
-          unsubDoneRef.current?.();
-          unsubErrorRef.current?.();
-        },
-      );
+        onSessionChange?.(resolvedSessionId);
+        if (resolvedSessionId) {
+          loadSession(resolvedSessionId);
+        }
 
-      unsubErrorRef.current = window.hermesAPI.onChatError((error: string) => {
+        playDoneSound();
+        void playTTS(req.response);
+      },
+    );
+
+    const cleanupError = window.hermesAPI.onChatError(
+      (error: string, requestId?: string) => {
+        const req = resolveRequest(requestId);
+        if (!req) return;
+        const isVisible = visibleRequestIdRef.current === req.id;
+
+        delete pendingMessagesRef.current[req.localKey];
+        delete activeRequestsRef.current[req.id];
+        syncVisibleLoading();
+        window.dispatchEvent(
+          new CustomEvent("chat-finished", {
+            detail: { requestId: req.id, error },
+          }),
+        );
+
+        if (!isVisible) return;
         setMessages((prev) => [
           ...prev,
           {
@@ -208,17 +317,70 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             content: `**Error:** ${error}`,
           },
         ]);
-        setIsLoading(false);
-        unsubChunkRef.current?.();
-        unsubDoneRef.current?.();
-        unsubErrorRef.current?.();
-      });
+      },
+    );
 
-      // Notify the mascot that we are thinking
-      window.dispatchEvent(new CustomEvent("chat-started"));
+    return () => {
+      cleanupChunk();
+      cleanupDone();
+      cleanupError();
+    };
+  }, [
+    loadSession,
+    onSessionChange,
+    playDoneSound,
+    playTTS,
+    playTypingSound,
+    resolveRequest,
+    syncVisibleLoading,
+  ]);
+
+  const handleSend = useCallback(
+    async (text: string) => {
+      if (!window.hermesAPI) return;
+
+      const requestId = `chat-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`;
+      const activeSessionId = currentSessionRef.current;
+      const localKey = activeSessionId || `request:${requestId}`;
+      const alreadyRunning = Object.values(activeRequestsRef.current).some(
+        (req) => req.localKey === localKey,
+      );
+      if (alreadyRunning) return;
+
+      const userMsg: Message = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: text,
+      };
+
+      pendingMessagesRef.current[localKey] = [
+        ...(pendingMessagesRef.current[localKey] || []),
+        userMsg,
+      ];
+      activeRequestsRef.current[requestId] = {
+        id: requestId,
+        sessionId: activeSessionId,
+        localKey,
+        response: "",
+      };
+      visibleRequestIdRef.current = requestId;
+      setLoadingRequestId(requestId);
+      setMessages((prev) => [...prev, userMsg]);
+
+      if (!activeSessionId) {
+        onNewSession();
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("chat-started", {
+          detail: { requestId, sessionId: activeSessionId },
+        }),
+      );
 
       try {
-        const history = messages
+        const history = messagesRef.current
           .filter((msg) => msg.role === "user" || msg.role === "assistant")
           .slice(-20)
           .map((msg) => ({ role: msg.role, content: msg.content }));
@@ -228,8 +390,19 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           activeSessionId || undefined,
           history,
           activeProject,
+          requestId,
         );
       } catch (err) {
+        const req = activeRequestsRef.current[requestId];
+        if (!req) return;
+        delete pendingMessagesRef.current[localKey];
+        delete activeRequestsRef.current[requestId];
+        syncVisibleLoading();
+        window.dispatchEvent(
+          new CustomEvent("chat-finished", {
+            detail: { requestId, error: String(err) },
+          }),
+        );
         setMessages((prev) => [
           ...prev,
           {
@@ -238,40 +411,23 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             content: `**Error:** ${err}`,
           },
         ]);
-        setIsLoading(false);
-        unsubChunkRef.current?.();
-        unsubDoneRef.current?.();
-        unsubErrorRef.current?.();
       }
     },
-    [
-      sessionId,
-      onNewSession,
-      onSessionChange,
-      playDoneSound,
-      profile,
-      messages,
-      activeProject,
-    ],
+    [activeProject, onNewSession, profile, syncVisibleLoading],
   );
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     if (!window.hermesAPI || !e.dataTransfer.files.length) return;
 
-    // Support single file drop for now
     const file = e.dataTransfer.files[0];
-    const filePath = (file as any).path; // Available in Electron Chromium
+    const filePath = (file as { path?: string }).path;
     if (!filePath) return;
 
     try {
-      // @ts-ignore
       const destPath = await window.hermesAPI.copyFileToWorkspace(filePath);
       if (destPath) {
-        // Append context to input bar (requires state lifting, but we can inject it by triggering handleSend directly or modifying an input ref if available.
-        // For now, let's just send it directly as a system-like context or prompt the user)
-        const promptInjection = `[User uploaded a file at ${destPath}. Use your tools (like read_file or analyze_image) to read it if asked.]\n`;
-        // Quick way to put it in chat:
+        const promptInjection = `[User uploaded a file at ${destPath}. Use your tools to read it if asked.]\n`;
         handleSend(promptInjection + "I've uploaded a file.");
       }
     } catch (err) {
@@ -285,8 +441,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
   return (
     <div className="main-80m" onDrop={handleDrop} onDragOver={handleDragOver}>
-      <Messages messages={messages} isLoading={isLoading} />
-      <InputBar onSend={handleSend} disabled={isLoading} />
+      <Messages messages={messages} isLoading={Boolean(loadingRequestId)} />
+      <InputBar onSend={handleSend} disabled={Boolean(loadingRequestId)} />
     </div>
   );
 };

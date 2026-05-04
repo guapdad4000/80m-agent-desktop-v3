@@ -1,5 +1,5 @@
 export default {
-  title: "Memory",
+  title: "Second Brain",
   subtitle:
     "What Hermes remembers about you and your environment across sessions.",
   sessions: "Sessions",

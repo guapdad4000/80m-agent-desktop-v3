@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash, Refresh } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
-import { Check, ExternalLink } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileText,
+  FolderOpen,
+} from "lucide-react";
 
 interface MemoryEntry {
   index: number;
@@ -25,6 +32,40 @@ interface MemoryData {
     charLimit: number;
   };
   stats: { totalSessions: number; totalMessages: number };
+}
+
+interface FileNode {
+  name: string;
+  isDirectory: boolean;
+  path: string;
+}
+
+interface ObsidianVaultInfo {
+  path: string | null;
+  name: string;
+  exists: boolean;
+  noteCount: number;
+  totalFiles: number;
+}
+
+interface DocumentPreviewData {
+  path: string;
+  name: string;
+  exists: boolean;
+  kind:
+    | "text"
+    | "markdown"
+    | "image"
+    | "pdf"
+    | "office"
+    | "directory"
+    | "binary"
+    | "missing";
+  size: number;
+  fileUrl?: string;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
 }
 
 function timeAgo(ts: number | null): string {
@@ -83,12 +124,81 @@ const PROVIDER_URLS: Record<string, string> = {
   byterover: "https://app.byterover.dev",
 };
 
+function VaultTreeNode({
+  node,
+  level,
+  onFileClick,
+}: {
+  node: FileNode;
+  level: number;
+  onFileClick: (path: string) => void;
+}): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const [children, setChildren] = useState<FileNode[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function toggle(): Promise<void> {
+    if (!node.isDirectory) {
+      onFileClick(node.path);
+      return;
+    }
+    if (!expanded) {
+      setLoading(true);
+      try {
+        const entries = await window.hermesAPI.readDirectory(node.path);
+        setChildren(entries);
+      } finally {
+        setLoading(false);
+      }
+    }
+    setExpanded((value) => !value);
+  }
+
+  return (
+    <div className="memory-vault-node">
+      <button
+        type="button"
+        className="memory-vault-tree-item"
+        style={{ paddingLeft: `${level * 14 + 8}px` }}
+        onClick={() => void toggle()}
+        title={node.path}
+      >
+        {node.isDirectory ? (
+          <>
+            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <FolderOpen size={13} />
+          </>
+        ) : (
+          <>
+            <span className="memory-vault-tree-spacer" />
+            <FileText size={13} />
+          </>
+        )}
+        <span className="memory-vault-tree-name">{node.name}</span>
+        {loading && <span className="memory-vault-tree-loading">...</span>}
+      </button>
+      {expanded && node.isDirectory && (
+        <div>
+          {children.map((child) => (
+            <VaultTreeNode
+              key={child.path}
+              node={child}
+              level={level + 1}
+              onFileClick={onFileClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Memory({ profile }: { profile?: string }): React.JSX.Element {
   const { t } = useI18n();
   const [data, setData] = useState<MemoryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"entries" | "profile" | "providers">(
-    "entries",
+  const [tab, setTab] = useState<"vault" | "entries" | "profile" | "providers">(
+    "vault",
   );
   const [error, setError] = useState("");
   const [memoryProvider, setMemoryProvider] = useState<string | null>(null);
@@ -96,6 +206,12 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   const [providerEnv, setProviderEnv] = useState<Record<string, string>>({});
   const [providerSavedKey, setProviderSavedKey] = useState<string | null>(null);
   const [activating, setActivating] = useState<string | null>(null);
+  const [vault, setVault] = useState<ObsidianVaultInfo | null>(null);
+  const [vaultRoot, setVaultRoot] = useState<FileNode[]>([]);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<DocumentPreviewData | null>(
+    null,
+  );
 
   // Entry management
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -109,20 +225,37 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   const [userEditing, setUserEditing] = useState(false);
   const [userSaved, setUserSaved] = useState(false);
 
+  const loadVaultRoot = useCallback(async (vaultPath: string | null) => {
+    if (!vaultPath) {
+      setVaultRoot([]);
+      return;
+    }
+    setVaultLoading(true);
+    try {
+      const entries = await window.hermesAPI.readDirectory(vaultPath);
+      setVaultRoot(entries);
+    } finally {
+      setVaultLoading(false);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
-    const [d, provider, provs, env] = await Promise.all([
+    const [d, provider, provs, env, vaultInfo] = await Promise.all([
       window.hermesAPI.readMemory(profile),
       window.hermesAPI.getConfig("memory.provider", profile),
       window.hermesAPI.discoverMemoryProviders(profile),
       window.hermesAPI.getEnv(profile),
+      window.hermesAPI.getObsidianVault(),
     ]);
     setData(d as MemoryData);
     setUserContent(d.user.content);
     setMemoryProvider(provider);
     setProviders(provs);
     setProviderEnv(env);
+    setVault(vaultInfo);
+    await loadVaultRoot(vaultInfo.path);
     setLoading(false);
-  }, [profile]);
+  }, [loadVaultRoot, profile]);
 
   useEffect(() => {
     setLoading(true);
@@ -184,6 +317,24 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
     }
   }
 
+  async function handleChooseVault(): Promise<void> {
+    const selected = await window.hermesAPI.selectProjectDirectory();
+    if (!selected) return;
+    const info = await window.hermesAPI.setObsidianVault(selected);
+    setVault(info);
+    setSelectedNote(null);
+    await loadVaultRoot(info.path);
+  }
+
+  async function handleVaultFileClick(path: string): Promise<void> {
+    const preview = await window.hermesAPI.readDocumentPreview(path);
+    setSelectedNote(preview);
+  }
+
+  async function handleRevealVault(): Promise<void> {
+    if (vault?.path) await window.hermesAPI.revealLocalPath(vault.path);
+  }
+
   if (loading || !data) {
     return (
       <div className="settings-container">
@@ -198,15 +349,17 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   return (
     <div className="main-80m">
       <div className="screen-header-80m">
-        <span className="screen-header-80m-title">MEMORY</span>
+        <span className="screen-header-80m-title">SECOND BRAIN</span>
       </div>
       <div className="screen-content-80m">
         <div className="memory-header">
           <div>
             <h1 className="settings-header" style={{ marginBottom: 4 }}>
-              {t("memory.title")}
+              Second Brain
             </h1>
-            <p className="memory-subtitle">{t("memory.subtitle")}</p>
+            <p className="memory-subtitle">
+              Obsidian vault, agent memory, and long-term profile context.
+            </p>
           </div>
           <button className="btn btn-secondary btn-sm" onClick={loadData}>
             <Refresh size={13} />
@@ -233,6 +386,10 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
             </span>
             <span className="memory-stat-label">{t("memory.memories")}</span>
           </div>
+          <div className="memory-stat">
+            <span className="memory-stat-value">{vault?.noteCount ?? 0}</span>
+            <span className="memory-stat-label">Vault Notes</span>
+          </div>
         </div>
 
         {/* Capacity */}
@@ -251,6 +408,15 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
 
         {/* Tabs */}
         <div className="memory-tabs">
+          <button
+            className={`memory-tab ${tab === "vault" ? "active" : ""}`}
+            onClick={() => setTab("vault")}
+          >
+            Obsidian Vault
+            {vault?.exists && (
+              <span className="memory-tab-time">{vault.name}</span>
+            )}
+          </button>
           <button
             className={`memory-tab ${tab === "entries" ? "active" : ""}`}
             onClick={() => setTab("entries")}
@@ -285,6 +451,137 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
         </div>
 
         {error && <div className="memory-error">{error}</div>}
+
+        {tab === "vault" && (
+          <div className="memory-vault">
+            <div className="memory-vault-toolbar">
+              <div>
+                <div className="memory-vault-title">
+                  {vault?.exists ? vault.name : "No vault selected"}
+                </div>
+                <div className="memory-vault-path">
+                  {vault?.path ||
+                    "Choose your Obsidian vault to browse notes here."}
+                </div>
+              </div>
+              <div className="memory-vault-actions">
+                {vault?.path && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void handleRevealVault()}
+                  >
+                    Reveal
+                  </button>
+                )}
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void handleChooseVault()}
+                >
+                  {vault?.exists ? "Change Vault" : "Choose Vault"}
+                </button>
+              </div>
+            </div>
+
+            {!vault?.exists ? (
+              <div className="memory-empty">
+                <p>Obsidian vault not found.</p>
+                <p className="memory-empty-hint">
+                  The desktop app will remember the folder you choose.
+                </p>
+              </div>
+            ) : (
+              <div className="memory-vault-browser">
+                <div className="memory-vault-tree">
+                  <div className="memory-vault-counts">
+                    {vault.noteCount.toLocaleString()} notes /{" "}
+                    {vault.totalFiles.toLocaleString()} files
+                  </div>
+                  {vaultLoading ? (
+                    <div className="memory-vault-loading">Loading vault...</div>
+                  ) : (
+                    vaultRoot.map((node) => (
+                      <VaultTreeNode
+                        key={node.path}
+                        node={node}
+                        level={0}
+                        onFileClick={(path) => void handleVaultFileClick(path)}
+                      />
+                    ))
+                  )}
+                </div>
+                <div className="memory-vault-preview">
+                  {selectedNote ? (
+                    <>
+                      <div className="memory-vault-preview-header">
+                        <div>
+                          <div className="memory-vault-preview-title">
+                            {selectedNote.name}
+                          </div>
+                          <div className="memory-vault-preview-path">
+                            {selectedNote.path}
+                          </div>
+                        </div>
+                        <div className="memory-vault-actions">
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() =>
+                              void window.hermesAPI.openLocalPath(
+                                selectedNote.path,
+                              )
+                            }
+                          >
+                            Open
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() =>
+                              void window.hermesAPI.revealLocalPath(
+                                selectedNote.path,
+                              )
+                            }
+                          >
+                            Reveal
+                          </button>
+                        </div>
+                      </div>
+                      {selectedNote.content ? (
+                        <pre className="memory-vault-note">
+                          {selectedNote.content}
+                        </pre>
+                      ) : selectedNote.kind === "image" &&
+                        selectedNote.fileUrl ? (
+                        <img
+                          className="memory-vault-image"
+                          src={selectedNote.fileUrl}
+                          alt={selectedNote.name}
+                        />
+                      ) : selectedNote.kind === "pdf" &&
+                        selectedNote.fileUrl ? (
+                        <iframe
+                          className="memory-vault-pdf"
+                          src={selectedNote.fileUrl}
+                          title={selectedNote.name}
+                        />
+                      ) : (
+                        <div className="memory-empty">
+                          <p>{selectedNote.error || "Preview unavailable."}</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="memory-empty">
+                      <p>Select a note from the vault.</p>
+                      <p className="memory-empty-hint">
+                        Markdown, text, PDF, image, and Office files preview
+                        here.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Agent Memory Entries */}
         {tab === "entries" && (

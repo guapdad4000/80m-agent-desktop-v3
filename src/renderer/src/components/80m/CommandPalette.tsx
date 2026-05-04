@@ -41,7 +41,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     },
     {
       id: "memory",
-      label: "Open Memory",
+      label: "Open Second Brain",
       icon: "🧠",
       action: () => onNavigate("memory"),
     },

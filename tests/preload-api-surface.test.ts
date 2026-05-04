@@ -92,6 +92,30 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("discoverMemoryProviders");
     expect(typeMethods).toContain("discoverMemoryProviders");
   });
+
+  it("has Hermes v0.12 capability and upgrade APIs", () => {
+    for (const method of [
+      "getHermesCapabilities",
+      "runHermesUpdateCheck",
+      "runSafeHermesUpgrade",
+    ]) {
+      expect(preloadMethods).toContain(method);
+      expect(typeMethods).toContain(method);
+    }
+  });
+
+  it("has curator and runs APIs", () => {
+    for (const method of [
+      "runHermesCurator",
+      "readCuratorReport",
+      "startHermesRun",
+      "getHermesRun",
+      "stopHermesRun",
+    ]) {
+      expect(preloadMethods).toContain(method);
+      expect(typeMethods).toContain(method);
+    }
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────

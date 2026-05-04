@@ -45,6 +45,73 @@ interface HermesHealth {
   credentialProviders: Array<{ provider: string; count: number }>;
 }
 
+interface HermesCapabilities {
+  version: string | null;
+  semver: string | null;
+  isAtLeastV12: boolean;
+  updateAvailable: boolean;
+  api: {
+    ok: boolean;
+    status: number | null;
+    url: string;
+    error?: string;
+    features: Record<string, boolean>;
+    endpoints: Record<string, { method?: string; path?: string }>;
+    models: string[];
+  };
+  toolGateway: {
+    present: boolean;
+    available: boolean;
+    reason: string;
+    managedTools: string[];
+  };
+  supports: {
+    chatCompletions: boolean;
+    responses: boolean;
+    runs: boolean;
+    runEvents: boolean;
+    runStop: boolean;
+    toolProgress: boolean;
+    sessionContinuity: boolean;
+    curator: boolean;
+  };
+}
+
+interface CuratorCommandResult {
+  success: boolean;
+  supported: boolean;
+  output: string;
+  error?: string;
+  pinned: string[];
+  report: {
+    reportPath: string | null;
+    report: string;
+    runJsonPath: string | null;
+    runJson: unknown | null;
+  };
+}
+
+interface HermesRunResult {
+  success: boolean;
+  runId?: string;
+  status?: string;
+  sessionId?: string;
+  output?: string;
+  usage?: unknown;
+  error?: string;
+  raw?: unknown;
+}
+
+interface WorkspaceFileChange {
+  root: string;
+  path: string;
+  name: string;
+  relativePath: string;
+  event: string;
+  size: number;
+  modifiedAt: number;
+}
+
 interface HermesAPI {
   // Installation
   checkInstall: () => Promise<InstallStatus>;
@@ -58,6 +125,20 @@ interface HermesAPI {
   refreshHermesVersion: () => Promise<string | null>;
   runHermesDoctor: () => Promise<string>;
   runHermesUpdate: () => Promise<{ success: boolean; error?: string }>;
+  runHermesUpdateCheck: () => Promise<{
+    success: boolean;
+    updateAvailable: boolean;
+    output: string;
+    error?: string;
+  }>;
+  runSafeHermesUpgrade: (profile?: string) => Promise<{
+    success: boolean;
+    backupPath?: string;
+    updateAvailable?: boolean;
+    checkOutput?: string;
+    error?: string;
+  }>;
+  getHermesCapabilities: (profile?: string) => Promise<HermesCapabilities>;
 
   // OpenClaw migration
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
@@ -104,13 +185,44 @@ interface HermesAPI {
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
     activeProject?: string | null,
+    requestId?: string,
   ) => Promise<{ response: string; sessionId?: string }>;
-  abortChat: () => Promise<void>;
+  abortChat: (requestId?: string) => Promise<void>;
   openLocalPath: (path: string) => Promise<boolean>;
   revealLocalPath: (path: string) => Promise<boolean>;
-  onChatChunk: (callback: (chunk: string) => void) => () => void;
-  onChatDone: (callback: (sessionId?: string) => void) => () => void;
-  onChatToolProgress: (callback: (tool: string) => void) => () => void;
+  readDocumentPreview: (path: string) => Promise<{
+    path: string;
+    name: string;
+    exists: boolean;
+    kind:
+      | "text"
+      | "markdown"
+      | "image"
+      | "pdf"
+      | "office"
+      | "directory"
+      | "binary"
+      | "missing";
+    size: number;
+    fileUrl?: string;
+    content?: string;
+    truncated?: boolean;
+    error?: string;
+  }>;
+  watchWorkspace: (path: string) => Promise<boolean>;
+  unwatchWorkspace: () => Promise<boolean>;
+  onWorkspaceFileChanged: (
+    callback: (change: WorkspaceFileChange) => void,
+  ) => () => void;
+  onChatChunk: (
+    callback: (chunk: string, requestId?: string) => void,
+  ) => () => void;
+  onChatDone: (
+    callback: (sessionId?: string, requestId?: string) => void,
+  ) => () => void;
+  onChatToolProgress: (
+    callback: (tool: string, requestId?: string) => void,
+  ) => () => void;
   onChatUsage: (
     callback: (usage: {
       promptTokens: number;
@@ -121,7 +233,9 @@ interface HermesAPI {
       rateLimitReset?: number;
     }) => void,
   ) => () => void;
-  onChatError: (callback: (error: string) => void) => () => void;
+  onChatError: (
+    callback: (error: string, requestId?: string) => void,
+  ) => () => void;
 
   // Gateway
   startGateway: () => Promise<boolean>;
@@ -192,6 +306,20 @@ interface HermesAPI {
   readDirectory: (
     dirPath: string,
   ) => Promise<Array<{ name: string; isDirectory: boolean; path: string }>>;
+  getObsidianVault: () => Promise<{
+    path: string | null;
+    name: string;
+    exists: boolean;
+    noteCount: number;
+    totalFiles: number;
+  }>;
+  setObsidianVault: (path: string) => Promise<{
+    path: string | null;
+    name: string;
+    exists: boolean;
+    noteCount: number;
+    totalFiles: number;
+  }>;
 
   // Memory
   readMemory: (profile?: string) => Promise<{
@@ -416,6 +544,11 @@ interface HermesAPI {
       deliver: string[];
       skills: string[];
       script: string | null;
+      origin: string | null;
+      model: string | null;
+      provider: string | null;
+      session_id: string | null;
+      session_title: string | null;
     }>
   >;
   createCronJob: (
@@ -456,6 +589,26 @@ interface HermesAPI {
 
   // Debug dump
   runHermesDump: () => Promise<string>;
+  runHermesCurator: (
+    action: string,
+    skill?: string,
+    profile?: string,
+  ) => Promise<CuratorCommandResult>;
+  readCuratorReport: (
+    profile?: string,
+  ) => Promise<CuratorCommandResult["report"]>;
+  startHermesRun: (
+    input: string,
+    profile?: string,
+    options?: {
+      sessionId?: string;
+      instructions?: string;
+      previousResponseId?: string;
+      conversationHistory?: Array<{ role: string; content: string }>;
+    },
+  ) => Promise<HermesRunResult>;
+  getHermesRun: (runId: string, profile?: string) => Promise<HermesRunResult>;
+  stopHermesRun: (runId: string, profile?: string) => Promise<HermesRunResult>;
 
   // Memory providers
   discoverMemoryProviders: (profile?: string) => Promise<
@@ -488,6 +641,10 @@ interface HermesAPI {
   navigateBrowser: (url: string) => Promise<void>;
   getBrowserState: () => Promise<{ url: string } | null>;
   onPlaywrightNavigated: (callback: (url: string) => void) => () => void;
+
+  // Voice
+  transcribeAudio: (audioData: number[], mimeType?: string) => Promise<string>;
+  ttsSpeak: (text: string) => Promise<string>;
 }
 
 declare global {

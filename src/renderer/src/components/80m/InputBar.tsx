@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { Send } from "lucide-react";
 
 interface Props {
   onSend: (text: string) => void;
@@ -8,9 +9,11 @@ interface Props {
 const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
   const [text, setText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const audioChunksRef = useRef<Blob[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStartRef = useRef<number>(0);
 
   // Slash commands
   const [showCommands, setShowCommands] = useState(false);
@@ -20,10 +23,12 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     { cmd: "/new", desc: "Start a new chat session" },
     { cmd: "/clear", desc: "Clear current chat" },
     { cmd: "/model", desc: "Switch model (e.g. /model anthropic)" },
-    { cmd: "/settings", desc: "Open settings panel" }
+    { cmd: "/settings", desc: "Open settings panel" },
   ];
 
-  const filteredCommands = COMMANDS.filter(c => c.cmd.startsWith(text.split(" ")[0].toLowerCase()));
+  const filteredCommands = COMMANDS.filter((c) =>
+    c.cmd.startsWith(text.split(" ")[0].toLowerCase()),
+  );
 
   // Auto-resize textarea
   useEffect(() => {
@@ -47,9 +52,7 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.08);
-    } catch (_) {
-      // Audio not available
-    }
+    } catch (_) {}
   }, []);
 
   const handleSubmit = useCallback(() => {
@@ -57,8 +60,6 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     if (!trimmed || disabled) return;
 
     if (showCommands && filteredCommands.length > 0 && !text.includes(" ")) {
-      // Autocomplete command
-      setText(filteredCommands[commandIndex].cmd + " ");
       setShowCommands(false);
       textareaRef.current?.focus();
       return;
@@ -67,23 +68,22 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     if (trimmed.startsWith("/")) {
       const parts = trimmed.split(" ");
       const cmd = parts[0].toLowerCase();
-      
-      // Dispatch custom events for layout/chat area to handle
+
       if (cmd === "/new" || cmd === "/clear") {
         window.dispatchEvent(new CustomEvent("layout-cmd", { detail: "new" }));
         setText("");
         return;
       }
       if (cmd === "/settings") {
-        window.dispatchEvent(new CustomEvent("layout-cmd", { detail: "settings" }));
+        window.dispatchEvent(
+          new CustomEvent("layout-cmd", { detail: "settings" }),
+        );
         setText("");
         return;
       }
       if (cmd === "/model" && parts[1]) {
-        // Quick model switch
         window.hermesAPI?.setModelConfig("openrouter", parts[1], "");
         setText("");
-        // Notify user in chat?
         onSend(`[System: Switched model to ${parts[1]}]`);
         return;
       }
@@ -94,7 +94,7 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     setText("");
     setShowCommands(false);
     textareaRef.current?.focus();
-  }, [text, disabled, onSend, playClickSound, showCommands, filteredCommands, commandIndex]);
+  }, [text, disabled, onSend, playClickSound, showCommands, filteredCommands]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -106,12 +106,20 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setCommandIndex((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
+          setCommandIndex(
+            (i) => (i - 1 + filteredCommands.length) % filteredCommands.length,
+          );
           return;
         }
-        if (e.key === "Tab") {
+        if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          setText(filteredCommands[commandIndex].cmd + " ");
+          if (filteredCommands[commandIndex]) {
+            setText(filteredCommands[commandIndex].cmd + " ");
+            setShowCommands(false);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
           setShowCommands(false);
           return;
         }
@@ -125,35 +133,40 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     [handleSubmit, showCommands, filteredCommands, commandIndex],
   );
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setText(val);
-    if (val.startsWith("/") && !val.includes(" ")) {
-      setShowCommands(true);
-      setCommandIndex(0);
-    } else {
-      setShowCommands(false);
-    }
-  };
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      setText(val);
+      if (val.startsWith("/")) {
+        setShowCommands(true);
+        setCommandIndex(0);
+      } else {
+        setShowCommands(false);
+      }
+    },
+    [],
+  );
 
-  useEffect(() => {
-    const handleInject = (e: Event) => {
-      const customEv = e as CustomEvent<string>;
-      setText((prev) => prev ? prev + "\n" + customEv.detail : customEv.detail);
-      textareaRef.current?.focus();
-    };
-    window.addEventListener("inject-chat", handleInject);
-    return () => window.removeEventListener("inject-chat", handleInject);
+  // ─── Voice Recording ─────────────────────────────────────────────────────
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
   }, []);
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm",
+        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm",
       });
       audioChunksRef.current = [];
       mediaRecorderRef.current = mediaRecorder;
+      recordingStartRef.current = Date.now();
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -162,6 +175,35 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
+
+        // Discard recordings shorter than 500ms
+        const duration = Date.now() - recordingStartRef.current;
+        if (duration < 500 || audioChunksRef.current.length === 0) {
+          return;
+        }
+
+        setIsTranscribing(true);
+
+        try {
+          const blob = new Blob(audioChunksRef.current, {
+            type: mediaRecorder.mimeType || "audio/webm",
+          });
+          const arrayBuffer = await blob.arrayBuffer();
+          const audioData = Array.from(new Uint8Array(arrayBuffer));
+          const transcript = await window.hermesAPI?.transcribeAudio(
+            audioData,
+            blob.type || "audio/webm",
+          );
+          if (transcript && transcript.trim()) {
+            playClickSound();
+            onSend(transcript.trim());
+            setText("");
+          }
+        } catch (err) {
+          console.error("Transcription failed:", err);
+        } finally {
+          setIsTranscribing(false);
+        }
       };
 
       mediaRecorder.start(100);
@@ -176,22 +218,15 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     } catch (_) {
       // Mic not available
     }
-  }, []);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
-  }, []);
+  }, [onSend, playClickSound]);
 
   const handleMicClick = useCallback(() => {
-    if (isRecording) {
+    if (isRecording || isTranscribing) {
       stopRecording();
     } else {
       startRecording();
     }
-  }, [isRecording, startRecording, stopRecording]);
+  }, [isRecording, isTranscribing, startRecording, stopRecording]);
 
   // Keyboard shortcut: Cmd/Ctrl+Shift+Space for mic
   useEffect(() => {
@@ -212,8 +247,8 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
           {showCommands && filteredCommands.length > 0 && (
             <div className="slash-commands-popup">
               {filteredCommands.map((cmd, idx) => (
-                <div 
-                  key={cmd.cmd} 
+                <div
+                  key={cmd.cmd}
                   className={`slash-command-item ${idx === commandIndex ? "active" : ""}`}
                   onClick={() => {
                     setText(cmd.cmd + " ");
@@ -230,19 +265,26 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
           <textarea
             ref={textareaRef}
             className="input-80m-textarea"
-            placeholder={disabled ? "Processing..." : "Type a message or /command..."}
+            placeholder={
+              disabled
+                ? "Processing..."
+                : isTranscribing
+                  ? "Transcribing..."
+                  : "Type a message or /command..."
+            }
             value={text}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
-            disabled={disabled}
+            disabled={disabled || isTranscribing}
             rows={1}
           />
         </div>
         <button
-          className={`input-80m-mic${isRecording ? " recording" : ""}`}
+          className={`input-80m-mic${isRecording ? " recording" : ""}${isTranscribing ? " transcribing" : ""}`}
           onClick={handleMicClick}
           title="Hold to record (Ctrl+Shift+Space)"
           type="button"
+          disabled={isTranscribing}
         >
           {/* Animated mic SVG with sound wave bars */}
           <svg
@@ -277,30 +319,38 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
               strokeLinecap="round"
             />
             {/* Base */}
-            <path
-              d="M13 31h10"
+            <line
+              x1="12"
+              y1="28"
+              x2="24"
+              y2="28"
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
             />
+            {/* Spinning indicator when transcribing */}
+            {isTranscribing && (
+              <circle
+                cx="18"
+                cy="18"
+                r="16"
+                fill="none"
+                stroke="#22c55e"
+                strokeWidth="1.5"
+                strokeDasharray="4 3"
+                className="transcribe-spin"
+              />
+            )}
           </svg>
         </button>
         <button
           className="input-80m-send"
           onClick={handleSubmit}
           disabled={disabled || !text.trim()}
-          title="Send (Enter)"
+          title="Send"
           type="button"
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
+          <Send size={18} />
         </button>
       </div>
     </div>

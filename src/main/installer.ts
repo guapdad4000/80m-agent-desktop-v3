@@ -1,9 +1,9 @@
 import { spawn, execSync, execFile } from "child_process";
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { getModelConfig, getConnectionConfig } from "./config";
-import { stripAnsi } from "./utils";
+import { profileHome, stripAnsi } from "./utils";
 
 export const HERMES_HOME = join(homedir(), ".hermes");
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
@@ -198,6 +198,83 @@ export async function getHermesVersion(): Promise<string | null> {
 
 export function clearVersionCache(): void {
   _cachedVersion = null;
+}
+
+export interface HermesCommandResult {
+  success: boolean;
+  output: string;
+  error?: string;
+  code?: number | null;
+}
+
+function runHermesCommand(
+  args: string[],
+  profile?: string,
+  timeout = 120000,
+): Promise<HermesCommandResult> {
+  if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
+    return Promise.resolve({
+      success: false,
+      output: "",
+      error: "Hermes is not installed.",
+    });
+  }
+
+  const commandArgs =
+    profile && profile !== "default"
+      ? [HERMES_SCRIPT, "-p", profile, ...args]
+      : [HERMES_SCRIPT, ...args];
+
+  return new Promise((resolve) => {
+    execFile(
+      HERMES_PYTHON,
+      commandArgs,
+      {
+        cwd: HERMES_REPO,
+        env: {
+          ...process.env,
+          PATH: getEnhancedPath(),
+          HOME: homedir(),
+          HERMES_HOME,
+          TERM: "dumb",
+        },
+        timeout,
+        maxBuffer: 1024 * 1024 * 4,
+      },
+      (error, stdout, stderr) => {
+        const cleanStdout = stripAnsi(stdout || "");
+        const cleanStderr = stripAnsi(stderr || "");
+        if (error) {
+          resolve({
+            success: false,
+            output: cleanStdout || cleanStderr,
+            error: cleanStderr || error.message,
+            code:
+              typeof (error as NodeJS.ErrnoException & { code?: unknown })
+                .code === "number"
+                ? ((error as NodeJS.ErrnoException & { code?: number }).code ??
+                  null)
+                : null,
+          });
+          return;
+        }
+        resolve({ success: true, output: cleanStdout });
+      },
+    );
+  });
+}
+
+export function runHermesUpdateCheck(): Promise<
+  HermesCommandResult & { updateAvailable: boolean }
+> {
+  return runHermesCommand(["update", "--check"], undefined, 60000).then(
+    (result) => ({
+      ...result,
+      updateAvailable: /update available|commits behind|new version/i.test(
+        `${result.output}\n${result.error || ""}`,
+      ),
+    }),
+  );
 }
 
 export function runHermesDoctor(): string {
@@ -621,6 +698,180 @@ export function runHermesDump(): Promise<string> {
       },
     );
   });
+}
+
+// ────────────────────────────────────────────────────
+//  Curator controls (Hermes v0.12+)
+// ────────────────────────────────────────────────────
+
+export interface CuratorReport {
+  reportPath: string | null;
+  report: string;
+  runJsonPath: string | null;
+  runJson: unknown | null;
+}
+
+export interface CuratorCommandResult extends HermesCommandResult {
+  supported: boolean;
+  pinned: string[];
+  report: CuratorReport;
+}
+
+function readPinnedSkills(profile?: string): string[] {
+  const usagePath = join(profileHome(profile), "skills", ".usage.json");
+  if (!existsSync(usagePath)) return [];
+
+  try {
+    const parsed = JSON.parse(readFileSync(usagePath, "utf-8")) as unknown;
+    if (!parsed || typeof parsed !== "object") return [];
+    return Object.entries(parsed as Record<string, unknown>)
+      .filter(([, value]) => {
+        return (
+          value &&
+          typeof value === "object" &&
+          Boolean((value as { pinned?: boolean }).pinned)
+        );
+      })
+      .map(([name]) => name)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+function newestCuratorReportDir(profile?: string): string | null {
+  const root = join(profileHome(profile), "logs", "curator");
+  if (!existsSync(root)) return null;
+
+  const candidates = [root];
+  try {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      candidates.push(join(root, entry.name));
+    }
+  } catch {
+    return root;
+  }
+
+  return (
+    candidates
+      .filter((candidate) => existsSync(join(candidate, "REPORT.md")))
+      .sort((a, b) => {
+        try {
+          return (
+            statSync(join(b, "REPORT.md")).mtimeMs -
+            statSync(join(a, "REPORT.md")).mtimeMs
+          );
+        } catch {
+          return 0;
+        }
+      })[0] ?? root
+  );
+}
+
+export function readCuratorReport(profile?: string): CuratorReport {
+  const dir = newestCuratorReportDir(profile);
+  const reportPath = dir ? join(dir, "REPORT.md") : null;
+  const runJsonPath = dir ? join(dir, "run.json") : null;
+  let report = "";
+  let runJson: unknown | null = null;
+
+  try {
+    if (reportPath && existsSync(reportPath)) {
+      report = readFileSync(reportPath, "utf-8");
+    }
+  } catch {
+    report = "";
+  }
+
+  try {
+    if (runJsonPath && existsSync(runJsonPath)) {
+      runJson = JSON.parse(readFileSync(runJsonPath, "utf-8"));
+    }
+  } catch {
+    runJson = null;
+  }
+
+  return {
+    reportPath: reportPath && existsSync(reportPath) ? reportPath : null,
+    report,
+    runJsonPath: runJsonPath && existsSync(runJsonPath) ? runJsonPath : null,
+    runJson,
+  };
+}
+
+function curatorSupported(result: HermesCommandResult): boolean {
+  const text = `${result.output}\n${result.error || ""}`;
+  return !/no such command|unknown command|invalid choice|usage:.*hermes/i.test(
+    text,
+  );
+}
+
+export async function runHermesCurator(
+  action: string,
+  skill?: string,
+  profile?: string,
+): Promise<CuratorCommandResult> {
+  let args: string[];
+  switch (action) {
+    case "status":
+      args = ["curator", "status"];
+      break;
+    case "dry-run":
+      args = ["curator", "run", "--dry-run"];
+      break;
+    case "run":
+      args = ["curator", "run"];
+      break;
+    case "run-sync":
+      args = ["curator", "run", "--sync"];
+      break;
+    case "backup":
+      args = ["curator", "backup"];
+      break;
+    case "rollback":
+      args = ["curator", "rollback", "-y"];
+      break;
+    case "pause":
+      args = ["curator", "pause"];
+      break;
+    case "resume":
+      args = ["curator", "resume"];
+      break;
+    case "pin":
+    case "unpin":
+    case "restore":
+      if (!skill?.trim()) {
+        return {
+          success: false,
+          supported: true,
+          output: "",
+          error: "A skill name is required.",
+          pinned: readPinnedSkills(profile),
+          report: readCuratorReport(profile),
+        };
+      }
+      args = ["curator", action, skill.trim()];
+      break;
+    default:
+      return {
+        success: false,
+        supported: true,
+        output: "",
+        error: `Unknown curator action: ${action}`,
+        pinned: readPinnedSkills(profile),
+        report: readCuratorReport(profile),
+      };
+  }
+
+  const timeout = action === "run-sync" ? 900000 : 180000;
+  const result = await runHermesCommand(args, profile, timeout);
+  return {
+    ...result,
+    supported: curatorSupported(result),
+    pinned: readPinnedSkills(profile),
+    report: readCuratorReport(profile),
+  };
 }
 
 // ────────────────────────────────────────────────────

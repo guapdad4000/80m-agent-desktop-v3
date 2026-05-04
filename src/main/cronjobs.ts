@@ -20,10 +20,32 @@ export interface CronJob {
   deliver: string[];
   skills: string[];
   script: string | null;
+  origin: string | null;
+  model: string | null;
+  provider: string | null;
+  session_id: string | null;
+  session_title: string | null;
 }
 
 function jobsFilePath(profile?: string): string {
   return join(profileHome(profile), "cron", "jobs.json");
+}
+
+function titleFromPrompt(prompt: string): string {
+  const cleaned = String(prompt || "")
+    .replace(/[#*_`~[\]()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "(unnamed)";
+  if (cleaned.length <= 52) return cleaned;
+  const words = cleaned.split(" ");
+  let title = "";
+  for (const word of words) {
+    const next = `${title} ${word}`.trim();
+    if (next.length > 48) break;
+    title = next;
+  }
+  return title || `${cleaned.slice(0, 48)}...`;
 }
 
 /**
@@ -54,7 +76,11 @@ export async function listCronJobs(
 
       jobs.push({
         id: job.id,
-        name: job.name || "(unnamed)",
+        name:
+          job.name ||
+          job.session_title ||
+          job.session?.title ||
+          titleFromPrompt(job.prompt || ""),
         schedule: job.schedule_display || job.schedule?.value || "?",
         prompt: job.prompt || "",
         state,
@@ -71,6 +97,11 @@ export async function listCronJobs(
             : ["local"],
         skills: job.skills || (job.skill ? [job.skill] : []),
         script: job.script || null,
+        origin: job.origin || null,
+        model: job.model || null,
+        provider: job.provider || null,
+        session_id: job.session_id || job.session?.id || null,
+        session_title: job.session_title || job.session?.title || null,
       });
     }
 
