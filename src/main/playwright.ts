@@ -1,26 +1,28 @@
-import { chromium, Browser, Page } from 'playwright';
-import { BrowserWindow } from 'electron';
+import { chromium, Browser, Page } from "playwright";
+import { BrowserWindow } from "electron";
 
 let browser: Browser | null = null;
 let page: Page | null = null;
 
-export async function startBrowserService(mainWindow: BrowserWindow): Promise<void> {
+export async function startBrowserService(
+  mainWindow: BrowserWindow,
+): Promise<void> {
   if (browser) return;
-  
+
   try {
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage();
 
-    page.on('framenavigated', (frame) => {
+    page.on("framenavigated", (frame) => {
       if (frame === page?.mainFrame() && mainWindow) {
-        mainWindow.webContents.send('playwright-navigated', frame.url());
+        mainWindow.webContents.send("playwright-navigated", frame.url());
       }
     });
 
     // Optional: Send screenshot stream or cursor coordinates
     // We'll start with just URL synchronization
   } catch (err) {
-    console.error('Failed to start Playwright:', err);
+    console.error("Failed to start Playwright:", err);
   }
 }
 

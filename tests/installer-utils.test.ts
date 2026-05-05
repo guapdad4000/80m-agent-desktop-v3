@@ -1,6 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { join } from "path";
-import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readdirSync,
+  type Dirent,
+} from "fs";
 import { tmpdir } from "os";
 
 // We test the extracted pure functions by importing them.
@@ -156,22 +164,21 @@ describe("Memory provider discovery", () => {
     writeFileSync(join(pluginsDir, "holographic", "__init__.py"), "");
 
     // Simulate the scanning logic
-    const { readdirSync } = require("fs");
     const dirs = readdirSync(pluginsDir, { withFileTypes: true });
     const providers = dirs
-      .filter((d: any) => d.isDirectory() && !d.name.startsWith("_"))
-      .map((d: any) => ({
+      .filter((d: Dirent) => d.isDirectory() && !d.name.startsWith("_"))
+      .map((d: Dirent) => ({
         name: d.name,
         installed: existsSync(join(pluginsDir, d.name, "__init__.py")),
       }));
 
     expect(providers).toHaveLength(3);
-    expect(providers.map((p: any) => p.name).sort()).toEqual([
+    expect(providers.map((p) => p.name).sort()).toEqual([
       "holographic",
       "honcho",
       "mem0",
     ]);
-    expect(providers.every((p: any) => p.installed)).toBe(true);
+    expect(providers.every((p) => p.installed)).toBe(true);
   });
 
   it("reads active provider from config.yaml", () => {

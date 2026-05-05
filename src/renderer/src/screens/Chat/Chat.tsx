@@ -241,6 +241,7 @@ function Chat({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isLoadingRef = useRef(false);
+  const messagesRef = useRef(messages);
   const userScrolledUpRef = useRef(false);
 
   // Model picker state
@@ -260,6 +261,7 @@ function Chat({
 
   // Keep ref in sync for use in IPC callbacks
   isLoadingRef.current = isLoading;
+  messagesRef.current = messages;
 
   // Filtered slash commands based on current input
   const filteredSlashCommands = useMemo(
@@ -450,7 +452,8 @@ function Chat({
       try {
         const autoTts = await window.hermesAPI?.getConfig("voice.auto_tts");
         if (String(autoTts).toLowerCase() === "true") {
-          const lastMsg = messages[messages.length - 1];
+          const currentMessages = messagesRef.current;
+          const lastMsg = currentMessages[currentMessages.length - 1];
           if (lastMsg && lastMsg.role === "agent") {
             // Strip markdown artefacts for cleaner TTS
             const plain = lastMsg.content

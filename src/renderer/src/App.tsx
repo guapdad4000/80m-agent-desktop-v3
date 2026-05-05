@@ -8,6 +8,9 @@ import SplashScreen from "./screens/SplashScreen/SplashScreen";
 import { Layout80m } from "./components/80m";
 import { useI18n } from "./components/useI18n";
 import BackgroundLayers from "./components/BackgroundLayers";
+import AppTitleBar from "./components/80m/AppTitleBar";
+import AppNotifications from "./components/80m/AppNotifications";
+import SelectionToolbar from "./components/80m/SelectionToolbar";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
@@ -17,7 +20,6 @@ function App(): React.JSX.Element {
   const [installError, setInstallError] = useState<string | null>(null);
   const [nextScreen, setNextScreen] = useState<Screen | null>(null);
   const [splashDone, setSplashDone] = useState(false);
-  const isMac = window.electron?.process?.platform === "darwin";
 
   const runInstallCheck = useCallback(async () => {
     try {
@@ -126,9 +128,11 @@ function App(): React.JSX.Element {
     <ThemeProvider>
       <ErrorBoundary>
         <div className="app">
-          {isMac && <div className="drag-region" />}
+          <AppTitleBar />
           <BackgroundLayers />
           <div className="app-content">{renderScreen()}</div>
+          <SelectionToolbar />
+          <AppNotifications />
         </div>
       </ErrorBoundary>
     </ThemeProvider>

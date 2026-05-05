@@ -6,11 +6,12 @@ Date checked: 2026-05-04
 
 - Local desktop source repo: `/home/falcon/Apps/code/80m-agent-desktop`.
 - Packaged runtime folder: `/home/falcon/Apps/80m-agent-desktop/80mAgentControl-linux-x64`.
-- Installed Hermes: `Hermes Agent v0.11.0 (2026.4.23)`.
+- Installed Hermes: `Hermes Agent v0.12.0 (2026.4.30)`.
 - Upstream current release checked from GitHub: `Hermes Agent v0.12.0 (v2026.4.30)`.
 - Local gateway is running and `/health`, `/v1/capabilities`, and `/v1/models` respond.
 - API capabilities currently exposed locally include Chat Completions, Responses API, streaming, Runs API, run events SSE, run stop, tool progress events, and `X-Hermes-Session-Id`.
 - Desktop bridge surface is broad: Electron preload, preload types, and Tauri bridge currently expose the same 118 `window.hermesAPI` methods.
+- Live `/v1/runs` verification passed on 2026-05-04: the API streamed `message.delta`, emitted `run.completed`, and returned a completed poll status.
 
 ## Implementation Status
 
@@ -21,7 +22,8 @@ Date checked: 2026-05-04
 - Done: Settings health UI for v0.12 readiness, API surface, Runs support, Tool Gateway eligibility, and backup-plus-upgrade.
 - Done: Settings Curator tab with status, actions, skill pin/unpin/restore, and latest output/report.
 - Done: Tools screen Tool Gateway eligibility banner.
-- Remaining: switch primary chat streaming from Chat Completions/SSE to Runs events once the local install is upgraded to v0.12 and real event payloads can be verified.
+- Done: primary desktop chat uses Runs events when `/v1/capabilities` reports Runs/event support, with Chat Completions/SSE kept as fallback.
+- Done: renderer bundle no longer imports the heavy syntax-highlighter language registry.
 - Remaining: native Tauri command implementations for the new APIs. The Tauri renderer bridge currently returns safe fallbacks for these new calls.
 
 ## Verification Baseline
@@ -66,9 +68,10 @@ npm run smoke:hermes
 ### Phase 2 - Runs API Chat Runtime
 
 1. Done: Keep current SSE chat path working.
-2. In progress: Add a Runs API client for long-running tasks: start run, stream `/events`, stop run, resume by run/session id.
-3. Remaining: Render structured tool progress events instead of flattening everything into assistant text.
-4. Persist request ids and session ids so switching sessions never cross-wires streaming output.
+2. Done: Add a Runs API client for long-running tasks: start run, stream `/events`, stop run, resume by run/session id.
+3. Done: Route primary desktop chat to Runs events when Hermes supports it, with Chat Completions/SSE fallback.
+4. Remaining: Render richer structured tool progress events instead of short status labels.
+5. Done: Persist request ids and session ids so switching sessions never cross-wires streaming output.
 
 ### Phase 3 - Curator And Skills Control
 
@@ -98,7 +101,7 @@ npm run smoke:hermes
 
 ### Phase 7 - Performance And Packaging
 
-1. Reduce renderer bundle cost from syntax highlighting by importing a light highlighter and registering only common languages.
+1. Done: Reduce renderer bundle cost by removing the heavy syntax-highlighting registry from chat markdown rendering.
 2. Keep Tauri and Electron bridge coverage tests strict.
 3. Move remaining Tauri fallback/stub commands to native implementations before making Tauri the default build.
 4. Rebuild packaged artifacts only after source, build, smoke, and packaged launch checks pass.
@@ -107,7 +110,7 @@ npm run smoke:hermes
 
 - Upstream Hermes memory limits are intentionally small; bypassing them in the desktop can cause prompt bloat or upstream rejection.
 - Tool Gateway is subscription-gated, so the UI must distinguish "not configured" from "not included in account".
-- v0.12 controls must be capability-gated because the current local install is still v0.11.
+- v0.12 controls must remain capability-gated for older or remote Hermes installs even though the local default install is now v0.12.
 - The repo currently has substantial uncommitted feature work; stage narrowly and avoid bundling unrelated edits.
 
 ## Primary References

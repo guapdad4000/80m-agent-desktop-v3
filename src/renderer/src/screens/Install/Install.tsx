@@ -28,6 +28,7 @@ function Install({ onComplete, onFailed }: InstallProps): React.JSX.Element {
   const [failed, setFailed] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const installationFailedHintRef = useRef(t("install.installationFailedHint"));
 
   useEffect(() => {
     const cleanup = window.hermesAPI.onInstallProgress((p) => {
@@ -40,11 +41,11 @@ function Install({ onComplete, onFailed }: InstallProps): React.JSX.Element {
         if (result.success) {
           setDone(true);
         } else {
-          setFailed(result.error || t("install.installationFailedHint"));
+          setFailed(result.error || installationFailedHintRef.current);
         }
       })
       .catch((err) => {
-        setFailed(err.message || t("install.installationFailedHint"));
+        setFailed(err.message || installationFailedHintRef.current);
       });
 
     return cleanup;

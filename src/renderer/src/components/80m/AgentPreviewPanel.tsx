@@ -49,6 +49,15 @@ interface DocumentPreviewData {
 
 type PreviewMode = "files" | "browser";
 
+function normalizeBrowserTarget(value: string): string {
+  const target = value.trim();
+  if (!target) return "";
+  if (target.startsWith("http://") || target.startsWith("https://")) {
+    return target;
+  }
+  return `https://${target}`;
+}
+
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number") return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -252,15 +261,32 @@ const AgentPreviewPanel: React.FC<Props> = ({
   const handleNavigate = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!inputUrl) return;
-    let target = inputUrl;
-    if (!target.startsWith("http://") && !target.startsWith("https://")) {
-      target = `https://${target}`;
-    }
+    const target = normalizeBrowserTarget(inputUrl);
     if (!isBrowserActive) {
       await handleStartPlaywright();
     }
     await window.hermesAPI.navigateBrowser(target);
   };
+
+  useEffect(() => {
+    const handlePreviewUrl = ((event: CustomEvent<{ url: string }>) => {
+      const target = normalizeBrowserTarget(event.detail?.url || "");
+      if (!target) return;
+
+      setMode("browser");
+      setUrl(target);
+      setInputUrl(target);
+      setIsBrowserActive(true);
+      void (async () => {
+        await window.hermesAPI.startBrowser();
+        await window.hermesAPI.navigateBrowser(target);
+      })();
+    }) as EventListener;
+
+    window.addEventListener("open-agent-preview-url", handlePreviewUrl);
+    return () =>
+      window.removeEventListener("open-agent-preview-url", handlePreviewUrl);
+  }, []);
 
   const runFileAction = async (action: "open" | "reveal"): Promise<void> => {
     if (!selectedPath) return;

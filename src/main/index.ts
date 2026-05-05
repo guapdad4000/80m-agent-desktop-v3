@@ -25,16 +25,62 @@ import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
 
+interface AppNotificationPayload {
+  title: string;
+  body?: string;
+  tone?: "info" | "success" | "warning" | "error";
+  createdAt?: number;
+}
+
 /** Allowlist: only http, https, and mailto URLs for security. */
-function safeOpenExternal(url: string): void {
+function safeOpenExternal(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
       shell.openExternal(url);
+      return true;
     }
   } catch {
     // invalid URL — silently ignore
   }
+  return false;
+}
+
+function isRendererNavigation(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "file:" || parsed.protocol === "devtools:") {
+      return true;
+    }
+    if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+      return (
+        parsed.origin === new URL(process.env["ELECTRON_RENDERER_URL"]).origin
+      );
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function sendAppNotification(payload: AppNotificationPayload): void {
+  mainWindow?.webContents.send("app-notification", {
+    ...payload,
+    createdAt: payload.createdAt ?? Date.now(),
+    tone: payload.tone ?? "info",
+  });
+}
+
+function showAgentNotification(
+  payload: AppNotificationPayload,
+  native = false,
+): void {
+  sendAppNotification(payload);
+  if (!native || !Notification.isSupported()) return;
+  new Notification({
+    title: payload.title,
+    body: payload.body,
+  }).show();
 }
 
 function checkApiHealth(
@@ -544,6 +590,66 @@ function isTextPreviewExtension(extension: string): boolean {
   ].includes(extension);
 }
 
+function isEditableDocumentExtension(extension: string): boolean {
+  return [
+    ".txt",
+    ".md",
+    ".markdown",
+    ".json",
+    ".jsonl",
+    ".yaml",
+    ".yml",
+  ].includes(extension);
+}
+
+function writeDocumentContent(
+  targetPath: string,
+  content: string,
+): { success: boolean; error?: string; path?: string } {
+  const resolvedPath = resolveExistingLocalPath(targetPath);
+  if (!resolvedPath) {
+    return { success: false, error: "File not found." };
+  }
+
+  const stat = fs.statSync(resolvedPath);
+  if (stat.isDirectory()) {
+    return { success: false, error: "Cannot edit a directory." };
+  }
+
+  const extension = extname(resolvedPath).toLowerCase();
+  if (!isEditableDocumentExtension(extension)) {
+    return { success: false, error: "This file type is read-only here." };
+  }
+
+  if (content.length > 1024 * 1024 * 2) {
+    return { success: false, error: "File is too large to save safely." };
+  }
+
+  if (extension === ".json") {
+    try {
+      JSON.parse(content || "null");
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? `Invalid JSON: ${error.message}`
+            : "Invalid JSON.",
+      };
+    }
+  }
+
+  try {
+    fs.writeFileSync(resolvedPath, content, "utf-8");
+    return { success: true, path: resolvedPath };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Save failed.",
+    };
+  }
+}
+
 function runHermesPythonJson(
   script: string,
   args: string[],
@@ -924,10 +1030,8 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
-    ...(process.platform === "darwin"
-      ? { trafficLightPosition: { x: 16, y: 16 } }
-      : {}),
+    frame: false,
+    titleBarStyle: process.platform === "darwin" ? "hidden" : undefined,
     title: "80m Agent Desktop",
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
@@ -940,6 +1044,14 @@ function createWindow(): void {
 
   mainWindow.on("ready-to-show", () => {
     mainWindow!.show();
+  });
+
+  mainWindow.on("maximize", () => {
+    mainWindow?.webContents.send("window-maximized", true);
+  });
+
+  mainWindow.on("unmaximize", () => {
+    mainWindow?.webContents.send("window-maximized", false);
   });
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
@@ -967,8 +1079,26 @@ function createWindow(): void {
   );
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    safeOpenExternal(details.url);
+    if (safeOpenExternal(details.url)) {
+      sendAppNotification({
+        title: "Opened outside",
+        body: details.url,
+        tone: "info",
+      });
+    }
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (isRendererNavigation(url)) return;
+    event.preventDefault();
+    if (safeOpenExternal(url)) {
+      sendAppNotification({
+        title: "Opened outside",
+        body: url,
+        tone: "info",
+      });
+    }
   });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
@@ -1260,10 +1390,14 @@ function setupIPC(): void {
                 .replace(/[#*_`~\n]+/g, " ")
                 .trim()
                 .slice(0, 80);
-              new Notification({
-                title: "80m Agent",
-                body: preview || "Response ready",
-              }).show();
+              showAgentNotification(
+                {
+                  title: "80m Agent",
+                  body: preview || "Response ready",
+                  tone: "success",
+                },
+                true,
+              );
             }
           },
           onError: (error) => {
@@ -1272,10 +1406,14 @@ function setupIPC(): void {
             rejectChat(new Error(error));
             // Notify on error too if window not focused
             if (mainWindow && !mainWindow.isFocused()) {
-              new Notification({
-                title: "80m Agent — Error",
-                body: error.slice(0, 100),
-              }).show();
+              showAgentNotification(
+                {
+                  title: "80m Agent — Error",
+                  body: error.slice(0, 100),
+                  tone: "error",
+                },
+                true,
+              );
             }
           },
           onToolProgress: (tool) => {
@@ -1324,6 +1462,12 @@ function setupIPC(): void {
 
   ipcMain.handle("read-document-preview", (_event, targetPath: string) =>
     getDocumentPreview(targetPath),
+  );
+
+  ipcMain.handle(
+    "write-document-content",
+    (_event, targetPath: string, content: string) =>
+      writeDocumentContent(targetPath, content),
   );
 
   ipcMain.handle("watch-workspace", (_event, targetPath: string) =>
@@ -1687,8 +1831,33 @@ function setupIPC(): void {
 
   // Shell
   ipcMain.handle("open-external", (_event, url: string) => {
-    safeOpenExternal(url);
+    if (safeOpenExternal(url)) {
+      sendAppNotification({
+        title: "Opened outside",
+        body: url,
+        tone: "info",
+      });
+    }
   });
+  ipcMain.handle("window-minimize", () => {
+    mainWindow?.minimize();
+  });
+  ipcMain.handle("window-toggle-maximize", () => {
+    if (!mainWindow) return false;
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+    return mainWindow.isMaximized();
+  });
+  ipcMain.handle("window-close", () => {
+    mainWindow?.close();
+  });
+  ipcMain.handle(
+    "window-is-maximized",
+    () => mainWindow?.isMaximized() ?? false,
+  );
 
   // Backup / Import
   ipcMain.handle("run-hermes-backup", (_event, profile?: string) =>

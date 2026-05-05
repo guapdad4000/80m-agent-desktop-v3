@@ -90,7 +90,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [profile]);
+  }, [profile, t]);
 
   useEffect(() => {
     loadJobs();

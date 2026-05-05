@@ -126,6 +126,15 @@ const Layout80m: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const handlePreviewUrl = () => {
+      setShowPreview(true);
+    };
+    window.addEventListener("open-agent-preview-url", handlePreviewUrl);
+    return () =>
+      window.removeEventListener("open-agent-preview-url", handlePreviewUrl);
+  }, []);
+
   const renderMainContent = () => {
     const wrap = (_title: string, el: ReactNode) => (
       <div className="main-80m">

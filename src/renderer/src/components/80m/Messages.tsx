@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
+import { Check, Copy, ExternalLink, PanelRightOpen } from "lucide-react";
 import Animated80MLogo from "../Animated80MLogo";
 
 export interface Message {
@@ -225,6 +225,30 @@ function formatBytes(bytes?: number): string | null {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function dispatchToast(
+  title: string,
+  body: string,
+  tone: "info" | "success" | "warning" | "error" = "info",
+): void {
+  window.dispatchEvent(
+    new CustomEvent("desktop-toast", {
+      detail: { title, body, tone },
+    }),
+  );
+}
+
+function normalizeExternalHref(href?: string): string | null {
+  const value = href?.trim();
+  if (!value || value.startsWith("#")) return null;
+  if (/^https?:\/\//i.test(value) || /^mailto:/i.test(value)) return value;
+  if (/^www\./i.test(value)) return `https://${value}`;
+  return null;
+}
+
+function canPreviewHref(href: string | null): href is string {
+  return Boolean(href && /^https?:\/\//i.test(href));
 }
 
 function FileActions({ path }: { path?: string }): React.JSX.Element | null {
@@ -498,6 +522,87 @@ function ToolMessage({ msg }: { msg: Message }): React.JSX.Element {
 
 const Messages: React.FC<Props> = ({ messages, isLoading }) => {
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
+  const [copiedMsg, setCopiedMsg] = useState<string | null>(null);
+
+  const copyMessage = async (msg: Message): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopiedMsg(msg.id);
+      dispatchToast("Copied", "Message copied to clipboard.", "success");
+      window.setTimeout(() => setCopiedMsg(null), 1500);
+    } catch {
+      dispatchToast("Copy failed", "Clipboard permission was denied.", "error");
+    }
+  };
+
+  const openLink = (
+    href?: string,
+    mode: "external" | "preview" = "external",
+  ) => {
+    const target = normalizeExternalHref(href);
+    if (!target) {
+      dispatchToast(
+        "Link not opened",
+        "Only web and mail links can leave the app.",
+        "warning",
+      );
+      return;
+    }
+
+    if (mode === "preview") {
+      if (!canPreviewHref(target)) {
+        dispatchToast(
+          "Preview unavailable",
+          "Only web links can open in preview.",
+          "warning",
+        );
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("open-agent-preview-url", {
+          detail: { url: target },
+        }),
+      );
+      dispatchToast("Opening preview", target, "info");
+      return;
+    }
+
+    void window.hermesAPI.openExternal(target);
+  };
+
+  const markdownComponents: Components = {
+    a({ href, children, node: _node, ...props }) {
+      const target = normalizeExternalHref(href);
+      const previewable = canPreviewHref(target);
+      return (
+        <span className="msg-link-actions">
+          <a
+            {...props}
+            href={target || href}
+            title="Open outside"
+            onClick={(event) => {
+              event.preventDefault();
+              openLink(href, event.altKey ? "preview" : "external");
+            }}
+          >
+            {children}
+            <ExternalLink size={11} aria-hidden="true" />
+          </a>
+          {previewable && (
+            <button
+              type="button"
+              className="msg-link-preview-btn"
+              title="Open in preview"
+              aria-label="Open link in preview"
+              onClick={() => openLink(href, "preview")}
+            >
+              <PanelRightOpen size={12} />
+            </button>
+          )}
+        </span>
+      );
+    },
+  };
 
   return (
     <div className="messages-80m">
@@ -532,20 +637,19 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
             </div>
           )}
           <div className="msg-80m-bubble">
-            {msg.role === "assistant" && hoveredMsg === msg.id && (
+            {msg.role !== "tool" && hoveredMsg === msg.id && (
               <div className="msg-80m-actions">
-                <button className="msg-80m-action-btn" title="Copy">
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
+                <button
+                  className="msg-80m-action-btn"
+                  title="Copy message"
+                  type="button"
+                  onClick={() => void copyMessage(msg)}
+                >
+                  {copiedMsg === msg.id ? (
+                    <Check size={12} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
                 </button>
               </div>
             )}
@@ -568,7 +672,7 @@ const Messages: React.FC<Props> = ({ messages, isLoading }) => {
             {msg.role === "assistant" ? (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
+                components={markdownComponents}
               >
                 {msg.content +
                   (isLoading && index === messages.length - 1 ? " █" : "")}

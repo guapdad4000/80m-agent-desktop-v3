@@ -81,10 +81,7 @@ function modelConfigIssue(
   if (provider === "nous" && !hasCredential(pool, "nous")) {
     return "Nous Portal mode needs a saved Nous credential from hermes auth or hermes model.";
   }
-  if (
-    provider === "openai-codex" &&
-    !hasCredential(pool, "openai-codex")
-  ) {
+  if (provider === "openai-codex" && !hasCredential(pool, "openai-codex")) {
     return "OpenAI Codex mode needs a saved Codex OAuth credential from hermes model.";
   }
   if (provider === "alibaba" && !hasEnv(env, "DASHSCOPE_API_KEY")) {

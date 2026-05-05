@@ -275,7 +275,9 @@ function upsertModelBlock(
   baseUrl: string,
 ): string {
   const lines = content.split("\n");
-  let modelStart = lines.findIndex((line) => /^model:\s*(?:#.*)?$/.test(line));
+  const modelStart = lines.findIndex((line) =>
+    /^model:\s*(?:#.*)?$/.test(line),
+  );
 
   if (modelStart === -1) {
     const prefix = content.trimEnd();

@@ -2,13 +2,22 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash, Refresh } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import {
+  BookOpen,
+  Braces,
   Check,
   ChevronDown,
   ChevronRight,
+  Edit3,
+  Eye,
   ExternalLink,
+  FileCode2,
+  FileJson,
   FileText,
   FolderOpen,
+  Save,
+  X,
 } from "lucide-react";
+import AgentMarkdown from "../../components/AgentMarkdown";
 
 interface MemoryEntry {
   index: number;
@@ -124,6 +133,87 @@ const PROVIDER_URLS: Record<string, string> = {
   byterover: "https://app.byterover.dev",
 };
 
+function documentExtension(note: DocumentPreviewData | null): string {
+  if (!note) return "";
+  const match = (note.path || note.name).toLowerCase().match(/\.([^.]+)$/);
+  return match ? `.${match[1]}` : "";
+}
+
+function displayFileName(name: string): string {
+  const cleaned = name
+    .replace(
+      /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\uFE0F|\s)+/gu,
+      "",
+    )
+    .trim();
+  return cleaned || name;
+}
+
+function displayLocalPath(value: string): string {
+  return value
+    .split(/([/\\])/)
+    .map((part) =>
+      part === "/" || part === "\\" ? part : displayFileName(part),
+    )
+    .join("");
+}
+
+function isMarkdownDocument(note: DocumentPreviewData | null): boolean {
+  const extension = documentExtension(note);
+  return note?.kind === "markdown" || [".md", ".markdown"].includes(extension);
+}
+
+function isJsonDocument(note: DocumentPreviewData | null): boolean {
+  return [".json", ".jsonl"].includes(documentExtension(note));
+}
+
+function isEditableDocument(note: DocumentPreviewData | null): boolean {
+  if (!note || note.content === undefined || note.truncated) return false;
+  return [
+    ".txt",
+    ".md",
+    ".markdown",
+    ".json",
+    ".jsonl",
+    ".yaml",
+    ".yml",
+  ].includes(documentExtension(note));
+}
+
+function readableJson(content: string): string {
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
+}
+
+function readableContent(note: DocumentPreviewData): string {
+  const content = note.content || "";
+  return isJsonDocument(note) ? readableJson(content) : content;
+}
+
+function documentKindLabel(note: DocumentPreviewData): string {
+  if (isMarkdownDocument(note)) return "Markdown";
+  if (isJsonDocument(note)) return "JSON";
+  if (note.kind === "office") return "Office";
+  return note.kind.charAt(0).toUpperCase() + note.kind.slice(1);
+}
+
+function DocumentKindIcon({
+  note,
+}: {
+  note: DocumentPreviewData;
+}): React.JSX.Element {
+  if (isMarkdownDocument(note)) return <BookOpen size={17} />;
+  if (isJsonDocument(note)) return <FileJson size={17} />;
+  if ([".yaml", ".yml"].includes(documentExtension(note))) {
+    return <Braces size={17} />;
+  }
+  if (note.kind === "text") return <FileCode2 size={17} />;
+  return <FileText size={17} />;
+}
+
 function VaultTreeNode({
   node,
   level,
@@ -174,7 +264,9 @@ function VaultTreeNode({
             <FileText size={13} />
           </>
         )}
-        <span className="memory-vault-tree-name">{node.name}</span>
+        <span className="memory-vault-tree-name">
+          {displayFileName(node.name)}
+        </span>
         {loading && <span className="memory-vault-tree-loading">...</span>}
       </button>
       {expanded && node.isDirectory && (
@@ -212,6 +304,13 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   const [selectedNote, setSelectedNote] = useState<DocumentPreviewData | null>(
     null,
   );
+  const [noteEditMode, setNoteEditMode] = useState(false);
+  const [noteEditContent, setNoteEditContent] = useState("");
+  const [noteOriginalContent, setNoteOriginalContent] = useState("");
+  const [noteSaveStatus, setNoteSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [noteError, setNoteError] = useState("");
 
   // Entry management
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -329,6 +428,36 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   async function handleVaultFileClick(path: string): Promise<void> {
     const preview = await window.hermesAPI.readDocumentPreview(path);
     setSelectedNote(preview);
+    setNoteEditMode(false);
+    setNoteEditContent(preview.content || "");
+    setNoteOriginalContent(preview.content || "");
+    setNoteSaveStatus("idle");
+    setNoteError("");
+  }
+
+  async function handleSaveVaultNote(): Promise<void> {
+    if (!selectedNote || !isEditableDocument(selectedNote)) return;
+    setNoteSaveStatus("saving");
+    setNoteError("");
+    const result = await window.hermesAPI.writeDocumentContent(
+      selectedNote.path,
+      noteEditContent,
+    );
+    if (!result.success) {
+      setNoteSaveStatus("error");
+      setNoteError(result.error || "Save failed.");
+      return;
+    }
+
+    const preview = await window.hermesAPI.readDocumentPreview(
+      result.path || selectedNote.path,
+    );
+    setSelectedNote(preview);
+    setNoteEditContent(preview.content || noteEditContent);
+    setNoteOriginalContent(preview.content || noteEditContent);
+    setNoteEditMode(false);
+    setNoteSaveStatus("saved");
+    setTimeout(() => setNoteSaveStatus("idle"), 1800);
   }
 
   async function handleRevealVault(): Promise<void> {
@@ -345,6 +474,10 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
       </div>
     );
   }
+
+  const selectedNoteEditable = isEditableDocument(selectedNote);
+  const selectedNoteDirty =
+    selectedNoteEditable && noteEditContent !== noteOriginalContent;
 
   return (
     <div className="main-80m">
@@ -456,6 +589,7 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
           <div className="memory-vault">
             <div className="memory-vault-toolbar">
               <div>
+                <div className="memory-vault-kicker">Personal Archive</div>
                 <div className="memory-vault-title">
                   {vault?.exists ? vault.name : "No vault selected"}
                 </div>
@@ -492,9 +626,12 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
             ) : (
               <div className="memory-vault-browser">
                 <div className="memory-vault-tree">
-                  <div className="memory-vault-counts">
-                    {vault.noteCount.toLocaleString()} notes /{" "}
-                    {vault.totalFiles.toLocaleString()} files
+                  <div className="memory-vault-index-header">
+                    <span>Vault Index</span>
+                    <span>
+                      {vault.noteCount.toLocaleString()} notes /{" "}
+                      {vault.totalFiles.toLocaleString()} files
+                    </span>
                   </div>
                   {vaultLoading ? (
                     <div className="memory-vault-loading">Loading vault...</div>
@@ -511,43 +648,139 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
                 </div>
                 <div className="memory-vault-preview">
                   {selectedNote ? (
-                    <>
-                      <div className="memory-vault-preview-header">
-                        <div>
-                          <div className="memory-vault-preview-title">
-                            {selectedNote.name}
+                    <article className="memory-vault-article">
+                      <header className="memory-vault-preview-header">
+                        <div className="memory-vault-preview-heading">
+                          <div className="memory-vault-document-icon">
+                            <DocumentKindIcon note={selectedNote} />
                           </div>
-                          <div className="memory-vault-preview-path">
-                            {selectedNote.path}
+                          <div>
+                            <div className="memory-vault-kicker">
+                              {documentKindLabel(selectedNote)} /{" "}
+                              {selectedNote.size.toLocaleString()} bytes
+                            </div>
+                            <div className="memory-vault-preview-title">
+                              {displayFileName(selectedNote.name)}
+                            </div>
+                            <div className="memory-vault-preview-path">
+                              {displayLocalPath(selectedNote.path)}
+                            </div>
                           </div>
                         </div>
                         <div className="memory-vault-actions">
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() =>
-                              void window.hermesAPI.openLocalPath(
-                                selectedNote.path,
-                              )
-                            }
-                          >
-                            Open
-                          </button>
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() =>
-                              void window.hermesAPI.revealLocalPath(
-                                selectedNote.path,
-                              )
-                            }
-                          >
-                            Reveal
-                          </button>
+                          {selectedNoteEditable && (
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => {
+                                setNoteEditMode((value) => !value);
+                                setNoteError("");
+                              }}
+                            >
+                              {noteEditMode ? (
+                                <>
+                                  <Eye size={13} />
+                                  Preview
+                                </>
+                              ) : (
+                                <>
+                                  <Edit3 size={13} />
+                                  Edit
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {noteEditMode && selectedNoteEditable && (
+                            <>
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  setNoteEditContent(noteOriginalContent);
+                                  setNoteEditMode(false);
+                                  setNoteError("");
+                                }}
+                                disabled={!selectedNoteDirty}
+                              >
+                                <X size={13} />
+                                Reset
+                              </button>
+                              <button
+                                className="btn btn-primary btn-sm"
+                                onClick={() => void handleSaveVaultNote()}
+                                disabled={
+                                  !selectedNoteDirty ||
+                                  noteSaveStatus === "saving"
+                                }
+                              >
+                                <Save size={13} />
+                                {noteSaveStatus === "saving"
+                                  ? "Saving"
+                                  : "Save"}
+                              </button>
+                            </>
+                          )}
+                          {!noteEditMode && (
+                            <>
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() =>
+                                  void window.hermesAPI.openLocalPath(
+                                    selectedNote.path,
+                                  )
+                                }
+                              >
+                                Open
+                              </button>
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() =>
+                                  void window.hermesAPI.revealLocalPath(
+                                    selectedNote.path,
+                                  )
+                                }
+                              >
+                                Reveal
+                              </button>
+                            </>
+                          )}
                         </div>
-                      </div>
-                      {selectedNote.content ? (
-                        <pre className="memory-vault-note">
-                          {selectedNote.content}
-                        </pre>
+                      </header>
+                      {noteSaveStatus === "saved" && (
+                        <div className="memory-vault-save-status">
+                          <Check size={13} /> Saved
+                        </div>
+                      )}
+                      {noteError && (
+                        <div className="memory-error">{noteError}</div>
+                      )}
+                      {noteEditMode && selectedNoteEditable ? (
+                        <textarea
+                          className="memory-vault-editor"
+                          value={noteEditContent}
+                          onChange={(event) => {
+                            setNoteEditContent(event.target.value);
+                            setNoteSaveStatus("idle");
+                            setNoteError("");
+                          }}
+                          spellCheck={isMarkdownDocument(selectedNote)}
+                        />
+                      ) : selectedNote.content ? (
+                        <div className="memory-vault-readable">
+                          {isMarkdownDocument(selectedNote) ? (
+                            <div className="memory-vault-markdown">
+                              <AgentMarkdown>
+                                {readableContent(selectedNote)}
+                              </AgentMarkdown>
+                            </div>
+                          ) : isJsonDocument(selectedNote) ? (
+                            <pre className="memory-vault-json">
+                              {readableContent(selectedNote)}
+                            </pre>
+                          ) : (
+                            <pre className="memory-vault-note">
+                              {readableContent(selectedNote)}
+                            </pre>
+                          )}
+                        </div>
                       ) : selectedNote.kind === "image" &&
                         selectedNote.fileUrl ? (
                         <img
@@ -567,13 +800,19 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
                           <p>{selectedNote.error || "Preview unavailable."}</p>
                         </div>
                       )}
-                    </>
+                      {selectedNote.truncated && (
+                        <div className="memory-vault-footnote">
+                          Preview truncated at the desktop safety limit.
+                        </div>
+                      )}
+                    </article>
                   ) : (
-                    <div className="memory-empty">
-                      <p>Select a note from the vault.</p>
+                    <div className="memory-empty memory-vault-front-page">
+                      <BookOpen size={34} />
+                      <p>Second Brain Index</p>
                       <p className="memory-empty-hint">
-                        Markdown, text, PDF, image, and Office files preview
-                        here.
+                        Pick a file from the vault index to read it like a wiki
+                        page.
                       </p>
                     </div>
                   )}

@@ -14,6 +14,7 @@ const Animated80MLogo: React.FC<Animated80MLogoProps> = ({ className }) => {
     >
       <span className="animated-80m-logo-main" />
       <span className="animated-80m-logo-dot" />
+      <span className="animated-80m-logo-agent">Agent</span>
     </span>
   );
 };

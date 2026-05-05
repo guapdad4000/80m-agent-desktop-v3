@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Send } from "lucide-react";
+import { ClipboardPaste, Send } from "lucide-react";
 
 interface Props {
   onSend: (text: string) => void;
@@ -28,6 +28,21 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
 
   const filteredCommands = COMMANDS.filter((c) =>
     c.cmd.startsWith(text.split(" ")[0].toLowerCase()),
+  );
+
+  const showToast = useCallback(
+    (
+      title: string,
+      body: string,
+      tone: "info" | "success" | "warning" | "error" = "info",
+    ) => {
+      window.dispatchEvent(
+        new CustomEvent("desktop-toast", {
+          detail: { title, body, tone },
+        }),
+      );
+    },
+    [],
   );
 
   // Auto-resize textarea
@@ -95,6 +110,36 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
     setShowCommands(false);
     textareaRef.current?.focus();
   }, [text, disabled, onSend, playClickSound, showCommands, filteredCommands]);
+
+  const handlePaste = useCallback(async () => {
+    if (disabled || isTranscribing) return;
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (!clip) {
+        showToast("Clipboard empty", "Nothing to paste right now.", "warning");
+        return;
+      }
+
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        setText((current) => `${current}${clip}`);
+        return;
+      }
+
+      const start = textarea.selectionStart ?? text.length;
+      const end = textarea.selectionEnd ?? start;
+      const next = `${text.slice(0, start)}${clip}${text.slice(end)}`;
+      setText(next);
+      window.requestAnimationFrame(() => {
+        textarea.focus();
+        const cursor = start + clip.length;
+        textarea.setSelectionRange(cursor, cursor);
+      });
+      showToast("Pasted", "Clipboard text inserted.", "success");
+    } catch {
+      showToast("Paste failed", "Clipboard permission was denied.", "error");
+    }
+  }, [disabled, isTranscribing, showToast, text]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -279,6 +324,15 @@ const InputBar: React.FC<Props> = ({ onSend, disabled }) => {
             rows={1}
           />
         </div>
+        <button
+          className="input-80m-paste"
+          onClick={handlePaste}
+          title="Paste"
+          type="button"
+          disabled={disabled || isTranscribing}
+        >
+          <ClipboardPaste size={16} />
+        </button>
         <button
           className={`input-80m-mic${isRecording ? " recording" : ""}${isTranscribing ? " transcribing" : ""}`}
           onClick={handleMicClick}

@@ -112,6 +112,13 @@ interface WorkspaceFileChange {
   modifiedAt: number;
 }
 
+interface AppNotificationPayload {
+  title: string;
+  body?: string;
+  tone?: "info" | "success" | "warning" | "error";
+  createdAt?: number;
+}
+
 interface HermesAPI {
   // Installation
   checkInstall: () => Promise<InstallStatus>;
@@ -209,6 +216,10 @@ interface HermesAPI {
     truncated?: boolean;
     error?: string;
   }>;
+  writeDocumentContent: (
+    path: string,
+    content: string,
+  ) => Promise<{ success: boolean; error?: string; path?: string }>;
   watchWorkspace: (path: string) => Promise<boolean>;
   unwatchWorkspace: () => Promise<boolean>;
   onWorkspaceFileChanged: (
@@ -577,6 +588,14 @@ interface HermesAPI {
 
   // Shell
   openExternal: (url: string) => Promise<void>;
+  windowMinimize: () => Promise<void>;
+  windowToggleMaximize: () => Promise<boolean>;
+  windowClose: () => Promise<void>;
+  windowIsMaximized: () => Promise<boolean>;
+  onWindowMaximized: (callback: (isMaximized: boolean) => void) => () => void;
+  onAppNotification: (
+    callback: (payload: AppNotificationPayload) => void,
+  ) => () => void;
 
   // Backup / Import
   runHermesBackup: (

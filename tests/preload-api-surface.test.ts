@@ -93,6 +93,11 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("discoverMemoryProviders");
   });
 
+  it("has editable document preview API", () => {
+    expect(preloadMethods).toContain("writeDocumentContent");
+    expect(typeMethods).toContain("writeDocumentContent");
+  });
+
   it("has Hermes v0.12 capability and upgrade APIs", () => {
     for (const method of [
       "getHermesCapabilities",

@@ -294,6 +294,12 @@ export const installTauriBridge = (): void => {
           error: fallbackNotice("read_document_preview"),
         },
       ),
+    writeDocumentContent: (path, content) =>
+      call(
+        "write_document_content",
+        { path, content },
+        { success: false, error: fallbackNotice("write_document_content") },
+      ),
     watchWorkspace: (path) => call("watch_workspace", { path }, false),
     unwatchWorkspace: () => call("unwatch_workspace", {}, false),
     onWorkspaceFileChanged: (callback) =>
@@ -574,6 +580,12 @@ export const installTauriBridge = (): void => {
       ),
 
     openExternal: (url) => call("open_external", { url }, undefined),
+    windowMinimize: () => call("window_minimize", {}, undefined),
+    windowToggleMaximize: () => call("window_toggle_maximize", {}, false),
+    windowClose: () => call("window_close", {}, undefined),
+    windowIsMaximized: () => call("window_is_maximized", {}, false),
+    onWindowMaximized: (callback) => onEvent("window-maximized", callback),
+    onAppNotification: (callback) => onEvent("app-notification", callback),
     runHermesBackup: (profile) =>
       call(
         "run_hermes_backup",

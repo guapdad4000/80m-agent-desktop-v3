@@ -151,6 +151,11 @@ const hermesAPI = {
     ipcRenderer.invoke("reveal-local-path", path),
   readDocumentPreview: (path: string): Promise<unknown> =>
     ipcRenderer.invoke("read-document-preview", path),
+  writeDocumentContent: (
+    path: string,
+    content: string,
+  ): Promise<{ success: boolean; error?: string; path?: string }> =>
+    ipcRenderer.invoke("write-document-content", path, content),
   watchWorkspace: (path: string): Promise<boolean> =>
     ipcRenderer.invoke("watch-workspace", path),
   unwatchWorkspace: (): Promise<boolean> =>
@@ -694,6 +699,42 @@ const hermesAPI = {
   // Shell
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke("open-external", url),
+  windowMinimize: (): Promise<void> => ipcRenderer.invoke("window-minimize"),
+  windowToggleMaximize: (): Promise<boolean> =>
+    ipcRenderer.invoke("window-toggle-maximize"),
+  windowClose: (): Promise<void> => ipcRenderer.invoke("window-close"),
+  windowIsMaximized: (): Promise<boolean> =>
+    ipcRenderer.invoke("window-is-maximized"),
+  onWindowMaximized: (
+    callback: (isMaximized: boolean) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      isMaximized: boolean,
+    ): void => callback(isMaximized);
+    ipcRenderer.on("window-maximized", handler);
+    return () => ipcRenderer.removeListener("window-maximized", handler);
+  },
+  onAppNotification: (
+    callback: (payload: {
+      title: string;
+      body?: string;
+      tone?: "info" | "success" | "warning" | "error";
+      createdAt?: number;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: {
+        title: string;
+        body?: string;
+        tone?: "info" | "success" | "warning" | "error";
+        createdAt?: number;
+      },
+    ): void => callback(payload);
+    ipcRenderer.on("app-notification", handler);
+    return () => ipcRenderer.removeListener("app-notification", handler);
+  },
 
   // Backup / Import
   runHermesBackup: (
