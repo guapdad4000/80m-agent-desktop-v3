@@ -60,7 +60,7 @@ export function settingsChoiceButtonStyle(
     background: active ? "rgba(74, 222, 128, 0.16)" : "rgba(40, 48, 44, 0.92)",
     color: active ? "#4ade80" : "#f4fff7",
     boxShadow: active ? "0 0 0 1px rgba(74, 222, 128, 0.18)" : "none",
-    fontFamily: "'Fira Code', monospace",
+    fontFamily: "monospace",
     fontSize: "11px",
     fontWeight: 700,
     cursor: "pointer",

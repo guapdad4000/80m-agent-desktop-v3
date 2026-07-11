@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Minus, Square, X } from "lucide-react";
 
 type NotificationTone = "info" | "success" | "warning" | "error";
 
@@ -96,19 +95,11 @@ const AppTitleBar: React.FC = () => {
     return tickerMessages[tickerIndex % tickerMessages.length];
   }, [tickerIndex, tickerMessages]);
 
-  const minimize = useCallback(() => {
-    void window.hermesAPI.windowMinimize();
-  }, []);
-
   const toggleMaximize = useCallback(() => {
     window.hermesAPI
       .windowToggleMaximize()
       .then(setIsMaximized)
       .catch(() => undefined);
-  }, []);
-
-  const close = useCallback(() => {
-    void window.hermesAPI.windowClose();
   }, []);
 
   return (
@@ -131,39 +122,7 @@ const AppTitleBar: React.FC = () => {
         )}
       </div>
 
-      {/* Window controls — individual floating buttons */}
-      <div
-        className="app-titlebar-controls"
-        onDoubleClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="app-titlebar-control"
-          title="Minimize"
-          aria-label="Minimize"
-          onClick={minimize}
-        >
-          <Minus size={13} />
-        </button>
-        <button
-          type="button"
-          className="app-titlebar-control"
-          title={isMaximized ? "Restore" : "Maximize"}
-          aria-label={isMaximized ? "Restore" : "Maximize"}
-          onClick={toggleMaximize}
-        >
-          <Square size={11} />
-        </button>
-        <button
-          type="button"
-          className="app-titlebar-control close"
-          title="Close"
-          aria-label="Close"
-          onClick={close}
-        >
-          <X size={13} />
-        </button>
-      </div>
+      {/* Window controls removed — Mac has native traffic lights top-left */}
     </div>
   );
 };

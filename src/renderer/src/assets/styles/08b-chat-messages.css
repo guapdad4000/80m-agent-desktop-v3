@@ -58,7 +58,7 @@
 }
 
 .chat-header-80m-title {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 13px;
   font-weight: 700;
   color: #e8e8e8;
@@ -69,7 +69,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   color: #e8e8e8;
 }
@@ -110,6 +110,13 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-anchor: auto;
+}
+
+/* Keep short chats anchored to the bottom without reversing message order. */
+.messages-80m::before {
+  content: "";
+  margin-top: auto;
 }
 
 .messages-80m::-webkit-scrollbar {
@@ -159,7 +166,7 @@
 }
 
 .msg-80m-role {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.15em;
@@ -172,7 +179,7 @@
 .msg-80m-bubble {
   padding: 12px 16px;
   border-radius: 16px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 13px;
   line-height: 1.6;
   word-break: break-word;
@@ -190,7 +197,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
@@ -201,7 +208,7 @@
 }
 
 .msg-80m-assistant-label {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
@@ -363,7 +370,7 @@
   gap: 8px;
   padding: 12px 16px;
   color: #e8e8e8;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
 }
 

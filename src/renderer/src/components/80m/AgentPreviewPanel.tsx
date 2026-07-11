@@ -8,6 +8,9 @@ import {
   FileText,
   FolderOpen,
   Globe2,
+  Pause,
+  Play,
+  Terminal,
   X,
 } from "lucide-react";
 
@@ -48,15 +51,33 @@ interface DocumentPreviewData {
   error?: string;
 }
 
-type PreviewMode = "files" | "browser";
+type PreviewMode = "files" | "browser" | "terminal";
 
 function normalizeBrowserTarget(value: string): string {
   const target = value.trim();
   if (!target) return "";
+
   if (target.startsWith("http://") || target.startsWith("https://")) {
     return target;
   }
-  return `https://${target}`;
+
+  const shortcut = target.toLowerCase();
+  const shortcuts: Record<string, string> = {
+    google: "https://www.google.com",
+    youtube: "https://www.youtube.com",
+    yt: "https://www.youtube.com",
+    gmail: "https://mail.google.com",
+    chatgpt: "https://chatgpt.com",
+    rym: "https://rateyourmusic.com",
+    rateyourmusic: "https://rateyourmusic.com",
+    "rate your music": "https://rateyourmusic.com",
+  };
+  if (shortcuts[shortcut]) return shortcuts[shortcut];
+
+  const looksLikeDomain = /^[^\s]+\.[^\s]+$/.test(target);
+  if (looksLikeDomain) return `https://${target}`;
+
+  return `https://www.google.com/search?q=${encodeURIComponent(target)}`;
 }
 
 function formatBytes(bytes?: number): string {
@@ -141,7 +162,8 @@ const AgentPreviewPanel: React.FC<Props> = ({
   activeProject,
   isAgentWorking = false,
 }) => {
-  const [mode, setMode] = useState<PreviewMode>("browser");
+  // Default to files view; browser mode is activated when the agent actually navigates somewhere
+  const [mode, setMode] = useState<PreviewMode>("files");
   const [url, setUrl] = useState<string | null>(null);
   const [inputUrl, setInputUrl] = useState<string>("");
   const [isBrowserActive, setIsBrowserActive] = useState<boolean>(false);
@@ -155,11 +177,26 @@ const AgentPreviewPanel: React.FC<Props> = ({
   );
   const [fileLoading, setFileLoading] = useState(false);
   const [fileActionStatus, setFileActionStatus] = useState("");
+  const [webviewError, setWebviewError] = useState(false);
+  const [autoTrack, setAutoTrack] = useState(true);
+  const webviewRef = React.useRef<Electron.WebviewTag | null>(null);
+
+  interface TerminalEntry {
+    command: string;
+    output: string;
+    timestamp: number;
+  }
+  const [terminalLog, setTerminalLog] = useState<TerminalEntry[]>([]);
+  const terminalEndRef = React.useRef<HTMLDivElement | null>(null);
 
   const activeProjectName = useMemo(() => {
     if (!activeProject) return "";
     return activeProject.split("/").filter(Boolean).pop() || activeProject;
   }, [activeProject]);
+
+  useEffect(() => {
+    setWebviewError(false);
+  }, [url]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -207,9 +244,7 @@ const AgentPreviewPanel: React.FC<Props> = ({
 
     const cleanupChange = window.hermesAPI.onWorkspaceFileChanged((change) => {
       if (cancelled) return;
-      setMode("files");
       setLastChange(change);
-      setSelectedPath(change.path);
     });
 
     return () => {
@@ -219,6 +254,13 @@ const AgentPreviewPanel: React.FC<Props> = ({
       void window.hermesAPI.unwatchWorkspace();
     };
   }, [activeProject, isOpen]);
+
+  // Auto-track: when agent is working and autoTrack is on, jump to the latest changed file
+  useEffect(() => {
+    if (!autoTrack || !isAgentWorking || !lastChange) return;
+    setMode("files");
+    setSelectedPath(lastChange.path);
+  }, [lastChange, autoTrack, isAgentWorking]);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,6 +334,18 @@ const AgentPreviewPanel: React.FC<Props> = ({
       window.removeEventListener("open-agent-preview-url", handlePreviewUrl);
   }, []);
 
+  useEffect(() => {
+    const handleToolOutput = ((e: CustomEvent<{command: string; output: string; timestamp: number}>) => {
+      setTerminalLog((prev) => [...prev.slice(-199), e.detail]);
+      // Auto-scroll
+      setTimeout(() => terminalEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      // Auto-switch to terminal tab when agent is working
+      if (isAgentWorking) setMode("terminal");
+    }) as EventListener;
+    window.addEventListener("agent-terminal-output", handleToolOutput);
+    return () => window.removeEventListener("agent-terminal-output", handleToolOutput);
+  }, [isAgentWorking]);
+
   const runFileAction = async (action: "open" | "reveal"): Promise<void> => {
     if (!selectedPath) return;
     const ok =
@@ -341,7 +395,7 @@ const AgentPreviewPanel: React.FC<Props> = ({
               <input
                 type="text"
                 className="agent-browser-url-input"
-                placeholder=""
+                placeholder="Search Google or type a URL"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
               />
@@ -353,6 +407,18 @@ const AgentPreviewPanel: React.FC<Props> = ({
                 <ExternalLink size={14} />
               </button>
             </form>
+            <button
+              type="button"
+              className="agent-browser-chrome-btn"
+              title="Open in Window"
+              disabled={!inputUrl.trim()}
+              onClick={() => {
+                const target = (url && url !== "about:blank") ? url : normalizeBrowserTarget(inputUrl);
+                if (target) void window.hermesAPI.openBrowserWindow(target);
+              }}
+            >
+              <ExternalLink size={15} />
+            </button>
             <button
               type="button"
               className="agent-browser-chrome-btn"
@@ -372,11 +438,115 @@ const AgentPreviewPanel: React.FC<Props> = ({
           </div>
 
           <div className="agent-preview-content agent-browser-content">
-            <webview
-              src={browserSrc}
-              className="agent-preview-webview"
-              allowpopups={true}
-            />
+            {browserSrc && browserSrc !== "about:blank" ? (
+              webviewError ? (
+                <div className="agent-file-preview-empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, opacity: 0.7 }}>
+                  <Globe2 size={28} />
+                  <span style={{ textAlign: "center" }}>This page can&apos;t be embedded.</span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      style={{ marginTop: 4, padding: "4px 12px", fontSize: 13, cursor: "pointer" }}
+                      onClick={() => {
+                        setWebviewError(false);
+                        if (webviewRef.current) {
+                          (webviewRef.current as Electron.WebviewTag).reload();
+                        }
+                      }}
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      style={{ marginTop: 4, padding: "4px 12px", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
+                      onClick={() => {
+                        if (url && url !== "about:blank") {
+                          void window.hermesAPI.openBrowserWindow(url);
+                        }
+                      }}
+                    >
+                      <ExternalLink size={13} />
+                      Open in Window
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <webview
+                  ref={(el) => {
+                    webviewRef.current = el as Electron.WebviewTag | null;
+                    if (!el) return;
+
+                    const wv = el as Electron.WebviewTag & {
+                      dataset?: DOMStringMap;
+                    };
+                    if (wv.dataset?.browserFailHandlerAttached === "true") return;
+                    if (wv.dataset) wv.dataset.browserFailHandlerAttached = "true";
+
+                    const onFail = (event: Event) => {
+                      const detail = event as Event & {
+                        errorCode?: number;
+                        errorDescription?: string;
+                        isMainFrame?: boolean;
+                      };
+
+                      // Many real websites fail ad/tracker subframes while the main page loads fine.
+                      // Do not replace the browser with an error screen unless the top-level page failed.
+                      if (detail.isMainFrame === false) return;
+                      if (detail.errorCode === -3) return; // ERR_ABORTED during normal navigation/redirects.
+                      setWebviewError(true);
+                    };
+                    const onReady = () => setWebviewError(false);
+
+                    wv.addEventListener("did-fail-load", onFail);
+                    wv.addEventListener("did-finish-load", onReady);
+                  }}
+                  src={browserSrc}
+                  className="agent-preview-webview"
+                  allowpopups={true}
+                />
+              )
+            ) : (
+              <div className="agent-file-preview-empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, opacity: 0.5 }}>
+                <Globe2 size={28} />
+                <span>No page loaded yet. Type a URL above or ask the agent to open a link.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : mode === "terminal" ? (
+        <div className="agent-file-preview" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div className="agent-preview-header">
+            <div className="agent-preview-title">
+              <Terminal size={16} />
+              Terminal
+            </div>
+            <div className="agent-preview-tabs" role="tablist">
+              <button className="agent-preview-tab" onClick={() => setMode("files")} title="Files" type="button">
+                <FileText size={14} /><span>Files</span>
+              </button>
+              <button className="agent-preview-tab" onClick={() => setMode("browser")} title="Browser" type="button">
+                <Globe2 size={14} /><span>Browser</span>
+              </button>
+              <button className="agent-preview-tab active" onClick={() => setMode("terminal")} title="Terminal" type="button">
+                <Terminal size={14} /><span>Terminal</span>
+              </button>
+            </div>
+            <button className="agent-preview-close" onClick={onClose} title="Close Preview" type="button">
+              <X size={16} />
+            </button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", background: "#0d0d0d", padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "#e2e8f0" }}>
+            {terminalLog.length === 0 ? (
+              <div style={{ opacity: 0.4, marginTop: 20, textAlign: "center" }}>No terminal output yet. Ask the agent to run something.</div>
+            ) : (
+              terminalLog.map((entry, i) => (
+                <div key={`${entry.timestamp}-${i}`} style={{ marginBottom: 14 }}>
+                  <div style={{ color: "#4ade80", marginBottom: 3 }}>$ {entry.command}</div>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#cbd5e1", opacity: 0.85 }}>{entry.output}</pre>
+                </div>
+              ))
+            )}
+            <div ref={terminalEndRef} />
           </div>
         </div>
       ) : (
@@ -405,6 +575,15 @@ const AgentPreviewPanel: React.FC<Props> = ({
                 <Globe2 size={14} />
                 <span>Browser</span>
               </button>
+              <button
+                className="agent-preview-tab"
+                onClick={() => setMode("terminal")}
+                title="Terminal"
+                type="button"
+              >
+                <Terminal size={14} />
+                <span>Terminal</span>
+              </button>
             </div>
             <button
               className="agent-preview-close"
@@ -417,8 +596,38 @@ const AgentPreviewPanel: React.FC<Props> = ({
           </div>
           <div className="agent-file-preview-header">
             <div className="agent-file-preview-title">
-              <span className="agent-file-project">
+              <span className="agent-file-project" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {activeProjectName || "No project"}
+                {isAgentWorking && autoTrack && (
+                  <span
+                    title="Auto-tracking live file changes"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      color: "#4ade80",
+                      background: "rgba(74,222,128,0.12)",
+                      border: "1px solid rgba(74,222,128,0.3)",
+                      borderRadius: 4,
+                      padding: "1px 5px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: "#4ade80",
+                        display: "inline-block",
+                        animation: "livePulse 1.4s ease-in-out infinite",
+                      }}
+                    />
+                    LIVE
+                  </span>
+                )}
               </span>
               <span className="agent-file-state">
                 {watching
@@ -431,6 +640,16 @@ const AgentPreviewPanel: React.FC<Props> = ({
               </span>
             </div>
             <div className="agent-file-actions">
+              {isAgentWorking && (
+                <button
+                  type="button"
+                  onClick={() => setAutoTrack((v) => !v)}
+                  title={autoTrack ? "Pause auto-tracking" : "Resume auto-tracking"}
+                  style={{ color: autoTrack ? "#4ade80" : undefined }}
+                >
+                  {autoTrack ? <Pause size={13} /> : <Play size={13} />}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void runFileAction("open")}

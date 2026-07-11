@@ -248,7 +248,7 @@
 }
 
 .splash-80m-logo {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-weight: 900;
   font-size: 72px;
   color: #e8e8e8;
@@ -261,7 +261,7 @@
 }
 
 .splash-80m-tagline {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.4em;
@@ -429,7 +429,7 @@
 }
 
 .splash-80m-branding-tagline {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.4em;

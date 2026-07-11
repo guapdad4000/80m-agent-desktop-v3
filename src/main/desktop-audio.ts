@@ -203,49 +203,8 @@ export async function synthesizeSpeech(text: string): Promise<string> {
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(
-      `[VOICEBOX] Buddy voice unavailable, using fallback: ${reason}`,
+      `[VOICEBOX] Buddy voice unavailable; speech skipped because fallback voices are disabled: ${reason}`,
     );
-  }
-
-  const outputPath = join(
-    tmpdir(),
-    "80m-voice",
-    `tts_${Date.now()}_${Math.random().toString(16).slice(2)}.mp3`,
-  );
-  fs.mkdirSync(dirname(outputPath), { recursive: true });
-
-  const script = String.raw`
-import asyncio
-import json
-import sys
-
-text = sys.argv[1]
-output_path = sys.argv[2]
-
-try:
-    from tools.tts_tool import text_to_speech_tool
-    result = json.loads(text_to_speech_tool(text, output_path))
-    if result.get("success") and result.get("file_path"):
-        print(json.dumps(result, ensure_ascii=False))
-        raise SystemExit(0)
-except Exception as exc:
-    last_error = str(exc)
-else:
-    last_error = "Hermes TTS returned no audio"
-
-try:
-    import edge_tts
-    async def main():
-        communicate = edge_tts.Communicate(text, "en-US-AriaNeural")
-        await communicate.save(output_path)
-    asyncio.run(main())
-    print(json.dumps({"success": True, "file_path": output_path, "provider": "edge-fallback"}, ensure_ascii=False))
-except Exception as exc:
-    print(json.dumps({"success": False, "error": f"{last_error}; edge fallback failed: {exc}"}, ensure_ascii=False))
-`;
-  const result = await runHermesPythonJson(script, [text, outputPath], 90000);
-  if (result.success && typeof result.file_path === "string") {
-    return result.file_path;
   }
   return "";
 }

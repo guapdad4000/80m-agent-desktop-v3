@@ -56,6 +56,22 @@ function messageSignature(msg: Message): string {
   ].join("\u001f");
 }
 
+function messageSortValue(msg: Message, fallbackIndex: number): number {
+  return Number.isFinite(msg.createdAt) ? Number(msg.createdAt) : fallbackIndex;
+}
+
+function chronologicalMessages(messages: Message[]): Message[] {
+  return messages
+    .map((message, index) => ({ message, index }))
+    .sort((a, b) => {
+      const byCreatedAt =
+        messageSortValue(a.message, a.index) -
+        messageSortValue(b.message, b.index);
+      return byCreatedAt || a.index - b.index;
+    })
+    .map(({ message }) => message);
+}
+
 export function mergeMessages(base: Message[], overlay: Message[]): Message[] {
   const seen = new Set(base.map(messageSignature));
   const merged = [...base];
@@ -71,7 +87,7 @@ export function mergeMessages(base: Message[], overlay: Message[]): Message[] {
     seen.add(signature);
     merged.push(msg);
   }
-  return merged;
+  return chronologicalMessages(merged);
 }
 
 export function upsertMessage(messages: Message[], msg: Message): Message[] {
@@ -133,6 +149,7 @@ export function makeAssistantMessage(req: ActiveRequest): Message | null {
     id: `assistant-${req.id}`,
     role: "assistant",
     content: req.response,
+    createdAt: req.createdAt + 1,
   };
 }
 
@@ -181,6 +198,7 @@ export function makeToolProgressMessage(
     id: `tool-progress-${req.id}-${progress.idPart}`,
     role: "tool",
     content: JSON.stringify(content),
+    createdAt: Date.now(),
     tool_name: progress.tool,
     tool_calls: JSON.stringify({
       status: progress.status,

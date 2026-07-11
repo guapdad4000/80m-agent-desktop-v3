@@ -19,27 +19,6 @@ export function playDoneSound(): void {
   }
 }
 
-export function playBrowserTTS(text: string): boolean {
-  try {
-    if (!window.speechSynthesis) return false;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.05;
-    utterance.pitch = 0.95;
-    utterance.onstart = () =>
-      window.dispatchEvent(new CustomEvent("agent-speaking-start"));
-    utterance.onend = () =>
-      window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
-    utterance.onerror = () =>
-      window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
-    window.speechSynthesis.speak(utterance);
-    return true;
-  } catch (err) {
-    console.warn("Browser TTS failed:", err);
-    return false;
-  }
-}
-
 export async function playTTS(text: string): Promise<void> {
   const clean = plainSpeechText(text);
   if (!clean) return;
@@ -54,7 +33,6 @@ export async function playTTS(text: string): Promise<void> {
         window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
       audio.onerror = () => {
         window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
-        playBrowserTTS(clean);
       };
       await audio.play();
       return;
@@ -64,7 +42,6 @@ export async function playTTS(text: string): Promise<void> {
   }
 
   window.dispatchEvent(new CustomEvent("agent-speaking-stop"));
-  playBrowserTTS(clean);
 }
 
 export function playTypingSound(): void {

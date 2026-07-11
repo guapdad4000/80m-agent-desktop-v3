@@ -24,7 +24,7 @@ export function SettingsFrame({
             border: "none",
             color: "#4ade80",
             cursor: "pointer",
-            fontFamily: "'Fira Code', monospace",
+            fontFamily: "monospace",
             fontSize: "12px",
             display: "flex",
             alignItems: "center",

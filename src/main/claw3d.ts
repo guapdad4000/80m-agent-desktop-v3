@@ -3,7 +3,8 @@ import { existsSync, readFileSync, unlinkSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { createConnection } from "net";
-import { getEnhancedPath, HERMES_HOME } from "./installer";
+import {
+  HOST_HOME, getEnhancedPath, HERMES_HOME } from "./installer";
 import { findNpm } from "./claw3d-npm";
 import { stripAnsi, safeWriteFile } from "./utils";
 
@@ -244,7 +245,7 @@ export async function setupClaw3d(
   const env = {
     ...process.env,
     PATH: getEnhancedPath(),
-    HOME: homedir(),
+    HOME: HOST_HOME,
     TERM: "dumb",
   };
 
@@ -385,7 +386,7 @@ export function startDevServer(): boolean {
     env: {
       ...process.env,
       PATH: getEnhancedPath(),
-      HOME: homedir(),
+      HOME: HOST_HOME,
       TERM: "dumb",
       PORT: String(port),
     },
@@ -460,7 +461,7 @@ export function startAdapter(): boolean {
     env: {
       ...process.env,
       PATH: getEnhancedPath(),
-      HOME: homedir(),
+      HOME: HOST_HOME,
       TERM: "dumb",
     },
     stdio: ["ignore", "pipe", "pipe"],

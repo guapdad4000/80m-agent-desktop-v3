@@ -7,8 +7,8 @@ import {
   writeFileSync,
 } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_REPO,
   HERMES_PYTHON,
@@ -239,7 +239,7 @@ export function startGateway(profile?: string): boolean {
   const gatewayEnv: Record<string, string> = applyLongHaulEnv({
     ...(process.env as Record<string, string>),
     PATH: getEnhancedPath(),
-    HOME: homedir(),
+    HOME: HOST_HOME,
     HERMES_HOME: HERMES_HOME,
     API_SERVER_ENABLED: "true", // Ensure API server starts with gateway
     API_SERVER_KEY: apiServerKey,

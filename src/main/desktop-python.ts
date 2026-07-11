@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
-import { homedir } from "os";
 import {
+  HOST_HOME,
   getEnhancedPath,
   HERMES_HOME,
   HERMES_PYTHON,
@@ -22,7 +22,7 @@ export function runHermesPythonJson(
         maxBuffer: 1024 * 1024 * 4,
         env: {
           ...process.env,
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
           PATH: getEnhancedPath(),
           PYTHONUNBUFFERED: "1",

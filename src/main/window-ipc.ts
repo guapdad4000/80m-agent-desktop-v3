@@ -1,4 +1,4 @@
-import { ipcMain, shell, type BrowserWindow } from "electron";
+import { BrowserWindow, ipcMain, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 
 interface RegisterWindowIpcOptions {
@@ -72,4 +72,31 @@ export function registerWindowIpc({
     "window-is-maximized",
     () => getMainWindow()?.isMaximized() ?? false,
   );
+
+  ipcMain.handle("open-browser-window", (_event, url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) return false;
+    } catch {
+      return false;
+    }
+
+    const win = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      show: false,
+      autoHideMenuBar: true,
+      title: url,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    win.loadURL(url);
+    win.once("ready-to-show", () => win.show());
+    win.focus();
+    return true;
+  });
 }

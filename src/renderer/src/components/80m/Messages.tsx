@@ -32,6 +32,7 @@ export interface Message {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  createdAt?: number;
   attachments?: DroppedAttachment[];
   tool_calls?: string;
   tool_name?: string;
@@ -422,6 +423,12 @@ function ToolMessage({ msg }: { msg: Message }): React.JSX.Element {
         : undefined;
     const detail = compactToolText(command || msg.content);
 
+    if (msg.tool_name === "terminal" && msg.content) {
+      window.dispatchEvent(new CustomEvent("agent-terminal-output", {
+        detail: { command: command || "", output: msg.content, timestamp: Date.now() }
+      }));
+    }
+
     return (
       <ToolResultLine
         detail={detail}
@@ -551,7 +558,7 @@ const Messages: React.FC<Props> = ({
         const flatToolMessage = isFlatToolMessage(msg);
         return (
           <div
-            key={`${msg.id}-${index}`}
+            key={msg.id}
             className={`msg-80m ${msg.role}${flatToolMessage ? " tool-flat-message" : ""}`}
             onMouseEnter={() => setHoveredMsg(msg.id)}
             onMouseLeave={() => setHoveredMsg(null)}

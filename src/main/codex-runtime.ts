@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_REPO,
@@ -95,7 +96,7 @@ function commandEnv(profileHome?: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     PATH: getEnhancedPath(),
-    HOME: homedir(),
+    HOME: HOST_HOME,
     HERMES_HOME: profileHome || HERMES_HOME,
     TERM: "dumb",
   };

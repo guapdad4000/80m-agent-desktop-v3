@@ -24,7 +24,30 @@ function hasSignal(text: string, pattern: RegExp): boolean {
 
 function doctorLooksHealthy(output: string): boolean {
   if (!output.trim()) return false;
-  return !hasSignal(output, /(?:✗|error|failed|missing|required|not found)/i);
+
+  const text = output.replace(/\r/g, "");
+  if (/config version outdated/i.test(text)) {
+    return false;
+  }
+
+  const blockingLines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      if (/^[◆▶▸>]/.test(line)) return false;
+      if (/optional/i.test(line)) return false;
+      if (/not logged in|not configured/i.test(line)) return false;
+      if (/missing .*api[_ -]?key|missing .*token|missing exa_api_key/i.test(line)) {
+        return false;
+      }
+      if (/configure missing api keys for full tool access/i.test(line)) {
+        return false;
+      }
+      return /(?:✗|error|failed|required|not found)/i.test(line);
+    });
+
+  return blockingLines.length === 0;
 }
 
 export function buildSettingsAuditCards(input: {
@@ -62,10 +85,9 @@ export function buildSettingsAuditCards(input: {
     input.kanbanDiagnostics.output || input.kanbanDiagnostics.error || "";
   const codexRuntime = input.codexRuntime;
   const codexRuntimeEnabled = codexRuntime.openaiRuntime === "codex_app_server";
-  const codexReady =
-    codexRuntime.cliAvailable &&
-    codexRuntime.codexVersionOk &&
-    codexRuntime.loginOk;
+  const codexCliInstalled =
+    codexRuntime.cliAvailable && codexRuntime.codexVersionOk;
+  const codexReady = codexCliInstalled && codexRuntime.loginOk;
 
   cards.push({
     id: "runtime-version",
@@ -82,7 +104,7 @@ export function buildSettingsAuditCards(input: {
   if (
     hasSignal(
       updateText,
-      /update available|commits behind|run ['"]?hermes update/i,
+      /update available|commits behind|behind upstream|newer hermes checkout|newer version available/i,
     )
   ) {
     cards.push({
@@ -170,17 +192,19 @@ export function buildSettingsAuditCards(input: {
     id: "codex-cli",
     title: codexRuntime.cliAvailable
       ? `Codex CLI ${codexRuntime.codexVersion || "installed"}`
-      : "Codex CLI is not installed",
+      : "Codex CLI is optional",
     summary: codexRuntime.cliAvailable
-      ? `${codexRuntime.loginSummary}. ${codexRuntime.nativePluginCount} native Codex plugin${codexRuntime.nativePluginCount === 1 ? "" : "s"} configured.`
+      ? codexRuntime.loginOk
+        ? `${codexRuntime.loginSummary}. ${codexRuntime.nativePluginCount} native Codex plugin${codexRuntime.nativePluginCount === 1 ? "" : "s"} configured.`
+        : `${codexRuntime.loginSummary}. Optional unless you want to enable Codex app-server runtime.`
       : codexRuntime.error ||
-        "Install Codex CLI, then sign in with your ChatGPT account.",
-    severity: codexReady ? "ok" : "warning",
+        "Install and sign in only if you want Hermes to hand turns to Codex app-server.",
+    severity: codexReady ? "ok" : codexRuntimeEnabled ? "warning" : "info",
     category: "Codex",
     source: "codex --version && codex login status",
     docsUrl: "https://github.com/openai/codex",
     commandPreview: "npm i -g @openai/codex && codex login",
-    bucket: codexReady ? "ready" : "needsAttention",
+    bucket: codexReady ? "ready" : codexRuntimeEnabled ? "needsAttention" : "optional",
   });
 
   cards.push({
@@ -191,7 +215,7 @@ export function buildSettingsAuditCards(input: {
     summary: codexRuntimeEnabled
       ? "OpenAI/Codex turns will run through Codex app-server on the next Hermes session."
       : "Enable this to let Hermes hand OpenAI/Codex turns to Codex while keeping Hermes tools available through MCP.",
-    severity: codexRuntimeEnabled ? "ok" : codexReady ? "info" : "warning",
+    severity: codexRuntimeEnabled ? (codexReady ? "ok" : "warning") : "info",
     category: "Codex",
     source: "config.yaml model.openai_runtime",
     docsUrl:
@@ -206,10 +230,10 @@ export function buildSettingsAuditCards(input: {
       label: codexRuntimeEnabled ? "Use Hermes Runtime" : "Enable Codex",
     },
     bucket: codexRuntimeEnabled
-      ? "ready"
-      : codexReady
-        ? "optional"
-        : "needsAttention",
+      ? codexReady
+        ? "ready"
+        : "needsAttention"
+      : "optional",
   });
 
   cards.push({

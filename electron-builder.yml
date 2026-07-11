@@ -1,5 +1,5 @@
-appId: com.80m.agent-desktop
-productName: 80m Agent Desktop
+appId: com.foleybot.desktop
+productName: Foleybot
 directories:
   buildResources: build
 files:
@@ -40,7 +40,7 @@ extraResources:
 asarUnpack:
   - resources/**
 win:
-  executableName: 80m-agent-desktop
+  executableName: Foleybot
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -66,7 +66,7 @@ linux:
     - deb
   maintainer: 80M
   category: Utility
-  executableName: 80m-agent-desktop
+  executableName: Foleybot
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false

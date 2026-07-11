@@ -293,7 +293,7 @@ body.desktop-buddy-mode {
   border-radius: 7px;
   background: rgba(18, 28, 23, 0.68);
   color: #dbffe5;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   font-weight: 800;
   line-height: 1.2;

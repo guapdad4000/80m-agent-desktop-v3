@@ -2,7 +2,27 @@ import { existsSync, readFileSync, readdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-export const HERMES_HOME = join(homedir(), ".hermes");
+function resolveHostHome(): string {
+  const detected = homedir();
+  const envHome = process.env.HOME || detected;
+
+  // Hermes subagents run commands with HOME redirected under
+  // ~/.hermes/profiles/<profile>/home. If Foleybot is launched from that
+  // environment, Electron would otherwise look for Hermes inside the nested
+  // profile home and show first-run setup instead of the user's real history.
+  if (/\/\.hermes\/profiles\/[^/]+\/home$/.test(envHome)) {
+    const user = process.env.SUDO_USER || process.env.LOGNAME || process.env.USER;
+    if (user) {
+      const macHome = join("/Users", user);
+      if (existsSync(macHome)) return macHome;
+    }
+  }
+
+  return detected;
+}
+
+export const HOST_HOME = resolveHostHome();
+export const HERMES_HOME = join(HOST_HOME, ".hermes");
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 export const HERMES_VENV = join(HERMES_REPO, "venv");
 export const HERMES_PYTHON = join(HERMES_VENV, "bin", "python");
@@ -11,7 +31,7 @@ export const HERMES_ENV_FILE = join(HERMES_HOME, ".env");
 export const HERMES_CONFIG_FILE = join(HERMES_HOME, "config.yaml");
 
 export function getEnhancedPath(): string {
-  const home = homedir();
+  const home = HOST_HOME;
   const extra = [
     join(home, ".local", "bin"),
     join(home, ".cargo", "bin"),

@@ -39,6 +39,8 @@ export function labelForProfile(profile: string): string {
     knaight_of_affairs: "Knaight of Affairs",
     labrina: "Labrina",
     clawdette: "Clawdette",
+    gpt55coder: "GPT 5.5 Coder",
+    claudeorchestrator: "Claude Orchestrator",
   };
   return (
     labels[profile] ||

@@ -262,7 +262,7 @@
   color: #f4fff7;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -321,7 +321,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 4px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 700;
   color: #e8e8e8;
@@ -357,7 +357,7 @@
   color: #f4fff7;
   cursor: pointer;
   text-align: left;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   transition: all 0.12s ease;
   margin-bottom: 2px;
@@ -398,7 +398,7 @@
 
 .sidebar-80m-sessions-empty {
   padding: 12px 4px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   color: #e8e8e8;
   text-align: center;
@@ -441,7 +441,7 @@
   color: #f4fff7;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;

@@ -7,9 +7,14 @@ import path from "node:path";
 import process from "node:process";
 import { _electron as electron } from "playwright";
 
-const defaultPackagedApp =
-  "/home/falcon/Apps/80m-agent-desktop/80mAgentControl-linux-x64/80m-agent-desktop";
-const executablePath = process.env.PACKAGED_APP ?? defaultPackagedApp;
+function defaultPackagedApp() {
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Applications/Foleybot.app/Contents/MacOS/Foleybot");
+  }
+  return "/home/falcon/Apps/80m-agent-desktop/80mAgentControl-linux-x64/80m-agent-desktop";
+}
+
+const executablePath = process.env.PACKAGED_APP ?? defaultPackagedApp();
 const projectPath = process.env.UI_SMOKE_PROJECT ?? process.cwd();
 const screenshotPath =
   process.env.UI_SMOKE_SCREENSHOT ??
@@ -43,8 +48,18 @@ async function clickSidebarNav(page, key) {
 }
 
 async function verifyWindowControls(page) {
+  const counts = {};
   for (const title of ["Minimize", "Maximize", "Close"]) {
-    const count = await page.locator(`button[title="${title}"]`).count();
+    counts[title] = await page.locator(`button[title="${title}"]`).count();
+  }
+
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (total === 0) {
+    console.log("Window controls: native/macOS titlebar detected; no custom controls to verify");
+    return;
+  }
+
+  for (const [title, count] of Object.entries(counts)) {
     assert(count === 1, `Expected one ${title} window control, found ${count}`);
   }
 }

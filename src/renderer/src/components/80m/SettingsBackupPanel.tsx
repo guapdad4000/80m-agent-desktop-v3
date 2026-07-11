@@ -33,7 +33,7 @@ export function SettingsBackupPanel({
         <p
           style={{
             color: "#e8e8e8",
-            fontFamily: "'Fira Code', monospace",
+            fontFamily: "monospace",
             fontSize: "11px",
             marginBottom: "12px",
           }}
@@ -71,7 +71,7 @@ export function SettingsBackupPanel({
         <p
           style={{
             color: "#e8e8e8",
-            fontFamily: "'Fira Code', monospace",
+            fontFamily: "monospace",
             fontSize: "11px",
             marginBottom: "12px",
           }}

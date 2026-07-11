@@ -176,6 +176,8 @@ export const hermesDesktopApi = {
     ipcRenderer.on("playwright-navigated", handler);
     return () => ipcRenderer.removeListener("playwright-navigated", handler);
   },
+  openBrowserWindow: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-browser-window", url),
 
   // Voice
   transcribeAudio: (audioData: number[], mimeType?: string): Promise<string> =>

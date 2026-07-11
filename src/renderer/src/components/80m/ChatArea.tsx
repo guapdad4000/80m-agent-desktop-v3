@@ -21,6 +21,71 @@ import { useChatFileDrop } from "./useChatFileDrop";
 import { useChatRuntimeEvents } from "./useChatRuntimeEvents";
 import { useDesktopToast } from "./useDesktopToast";
 
+function normalizeBrowserTarget(value: string): string {
+  const target = value.trim();
+  if (!target) return "";
+
+  if (target.startsWith("http://") || target.startsWith("https://")) {
+    return target;
+  }
+
+  const shortcut = target.toLowerCase();
+  const shortcuts: Record<string, string> = {
+    google: "https://www.google.com",
+    youtube: "https://www.youtube.com",
+    yt: "https://www.youtube.com",
+    gmail: "https://mail.google.com",
+    chatgpt: "https://chatgpt.com",
+    rym: "https://rateyourmusic.com",
+    rateyourmusic: "https://rateyourmusic.com",
+    "rate your music": "https://rateyourmusic.com",
+  };
+  if (shortcuts[shortcut]) return shortcuts[shortcut];
+
+  const looksLikeDomain = /^[^\s]+\.[^\s]+$/.test(target);
+  if (looksLikeDomain) return `https://${target}`;
+
+  return `https://www.google.com/search?q=${encodeURIComponent(target)}`;
+}
+
+function inferBrowserTargetFromPrompt(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const directCommand = trimmed.match(/^\/(?:browser|browse|open|search)\s+(.+)$/i);
+  if (directCommand?.[1]) return normalizeBrowserTarget(directCommand[1]);
+
+  const explicitUrl = trimmed.match(/https?:\/\/[^\s)]+/i)?.[0];
+  if (explicitUrl) return normalizeBrowserTarget(explicitUrl);
+
+  const lower = trimmed.toLowerCase();
+  if (/\b(chatgpt|chat gpt)\b/.test(lower)) return "https://chatgpt.com";
+  if (/\b(rateyourmusic|rate your music|rym)\b/.test(lower)) {
+    const query = trimmed
+      .replace(/\b(?:open|pull up|go to|search|look up|find|on|in|using|rateyourmusic|rate your music|rym)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return query
+      ? `https://rateyourmusic.com/search?searchterm=${encodeURIComponent(query)}`
+      : "https://rateyourmusic.com";
+  }
+
+  const searchIntent = trimmed.match(
+    /\b(?:google|search for|look up|look for|find me|pull up)\b\s+(.+)/i,
+  );
+  if (searchIntent?.[1]) return normalizeBrowserTarget(searchIntent[1]);
+
+  return null;
+}
+
+function openBrowserPreview(target: string): void {
+  window.dispatchEvent(
+    new CustomEvent("open-agent-preview-url", {
+      detail: { url: target },
+    }),
+  );
+}
+
 const ChatArea: React.FC<ChatAreaProps> = ({
   conversationId,
   currentSession,
@@ -146,6 +211,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           id: `${id}-${m.id || i}`,
           role: m.role as "user" | "assistant" | "system" | "tool",
           content: m.content,
+          createdAt:
+            typeof m.timestamp === "number" ? m.timestamp * 1000 + i / 1000 : i,
           tool_calls: m.tool_calls,
           tool_name: m.tool_name,
         }));
@@ -197,7 +264,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       if (!window.hermesAPI) return;
 
       const kind = options.kind || "foreground";
-      const requestId = `chat-${Date.now()}-${Math.random()
+      const startedAt = Date.now();
+      const requestId = `chat-${startedAt}-${Math.random()
         .toString(16)
         .slice(2)}`;
       const activeSessionId =
@@ -217,9 +285,10 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       const displayUserMessage = options.displayUserMessage !== false;
 
       const userMsg: Message = {
-        id: `user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        id: `user-${startedAt}-${Math.random().toString(16).slice(2)}`,
         role: "user",
         content: text,
+        createdAt: startedAt,
         attachments: options.attachments?.length
           ? options.attachments
           : undefined,
@@ -241,6 +310,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         displaySessionId,
         localKey,
         response: initialResponse,
+        createdAt: startedAt,
         kind,
       };
       activeRequestsRef.current[requestId] = request;
@@ -292,6 +362,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           id: `error-${requestId}`,
           role: "assistant",
           content: `**Error:** ${err}`,
+          createdAt: req.createdAt + 1,
         };
         cacheOverlayMessage(req.localKey, errorMsg);
         delete activeRequestsRef.current[requestId];
@@ -355,13 +426,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         currentSessionRef.current ||
         request?.localKey ||
         `queued:${Date.now()}`;
-      const messageId = `queued-user-${Date.now()}-${Math.random()
+      const createdAt = Date.now();
+      const messageId = `queued-user-${createdAt}-${Math.random()
         .toString(16)
         .slice(2)}`;
       const userMsg: Message = {
         id: messageId,
         role: "user",
         content: text,
+        createdAt,
         attachments: attachments?.length ? attachments : undefined,
       };
       pendingMessagesRef.current[localKey] = [
@@ -371,11 +444,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       const next = [
         ...queuedTurnsRef.current,
         {
-          id: `queued-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          id: `queued-${createdAt}-${Math.random().toString(16).slice(2)}`,
           text,
           mode,
           messageId,
-          createdAt: Date.now(),
+          createdAt,
         },
       ];
       updateQueuedTurns(next);
@@ -419,6 +492,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         await startChatRequest(payload, { attachments, kind: "background" });
         setDraftAttachments([]);
         return;
+      }
+
+      const browserTarget = inferBrowserTargetFromPrompt(payload);
+      if (browserTarget) {
+        openBrowserPreview(browserTarget);
+        showToast(
+          "Browser opened",
+          browserTarget,
+          "info",
+        );
       }
 
       await startChatRequest(payload, { attachments, kind: "foreground" });

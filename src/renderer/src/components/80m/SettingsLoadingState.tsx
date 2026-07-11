@@ -17,7 +17,7 @@ export function SettingsLoadingState({
             border: "none",
             color: "#4ade80",
             cursor: "pointer",
-            fontFamily: "'Fira Code', monospace",
+            fontFamily: "monospace",
             fontSize: "12px",
           }}
         >
@@ -32,7 +32,7 @@ export function SettingsLoadingState({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "'Fira Code', monospace",
+          fontFamily: "monospace",
           color: "#e8e8e8",
           fontSize: "12px",
         }}

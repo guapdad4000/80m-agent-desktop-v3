@@ -137,7 +137,7 @@ export function SettingsProfilesPanel({
           <p
             style={{
               color: "#e8e8e8",
-              fontFamily: "'Fira Code', monospace",
+              fontFamily: "monospace",
               fontSize: "12px",
               textAlign: "center",
               padding: "20px",

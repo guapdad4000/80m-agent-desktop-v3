@@ -34,7 +34,7 @@
   background: rgba(52, 65, 57, 0.9);
   color: #f4fff7;
   cursor: pointer;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.05em;
@@ -82,7 +82,7 @@
   display: block;
   margin-bottom: 8px;
   color: #f4fff7;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.07em;
@@ -98,7 +98,7 @@
   background: #252d29;
   color: #f4fff7;
   outline: none;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
   transition:
     border-color 0.15s ease,
@@ -129,7 +129,7 @@
   background: rgba(52, 65, 57, 0.92);
   color: #f4fff7;
   cursor: pointer;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.05em;
@@ -171,7 +171,7 @@
   margin-top: 10px;
   border-radius: 8px;
   padding: 9px 11px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   line-height: 1.5;
   color: #f4fff7;
@@ -256,7 +256,7 @@
   align-items: center;
   gap: 6px;
   color: #bbf7d0;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;

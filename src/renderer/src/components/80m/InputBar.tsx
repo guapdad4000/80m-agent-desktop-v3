@@ -60,7 +60,7 @@ const InputBar: React.FC<Props> = ({
     { cmd: "/queue", desc: "Queue next turn" },
     { cmd: "/steer", desc: "Steer current work" },
     { cmd: "/background", desc: "Start background run" },
-    { cmd: "/model", desc: "Switch model (e.g. /model anthropic)" },
+    { cmd: "/model", desc: "Open model settings" },
     { cmd: "/settings", desc: "Open settings panel" },
   ];
 
@@ -146,10 +146,13 @@ const InputBar: React.FC<Props> = ({
         setText("");
         return;
       }
-      if (cmd === "/model" && parts[1]) {
-        window.hermesAPI?.setModelConfig("openrouter", parts[1], "");
+      if (cmd === "/model") {
+        // Route to Settings instead of writing a hardcoded-provider config.
+        // The old behavior forced provider "openrouter" and broke routing.
+        window.dispatchEvent(
+          new CustomEvent("layout-cmd", { detail: "settings" }),
+        );
         setText("");
-        onSend(`[System: Switched model to ${parts[1]}]`);
         return;
       }
     }

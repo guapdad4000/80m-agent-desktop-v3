@@ -1,8 +1,8 @@
 import { execFile } from "child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_REPO,
@@ -33,7 +33,7 @@ export async function runHermesBackup(
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
           TERM: "dumb",
         },
@@ -91,7 +91,7 @@ export async function runHermesImport(
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
           TERM: "dumb",
         },
@@ -124,7 +124,7 @@ export function runHermesDump(): Promise<string> {
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
           TERM: "dumb",
         },

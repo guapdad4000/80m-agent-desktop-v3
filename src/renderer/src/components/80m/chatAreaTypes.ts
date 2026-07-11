@@ -18,6 +18,7 @@ export interface ActiveRequest {
   displaySessionId: string | null;
   localKey: string;
   response: string;
+  createdAt: number;
   kind: "foreground" | "background";
 }
 

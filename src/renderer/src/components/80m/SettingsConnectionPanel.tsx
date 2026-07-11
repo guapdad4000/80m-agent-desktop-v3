@@ -162,7 +162,7 @@ export function SettingsConnectionPanel({
           <div
             style={{
               color: "#ef4444",
-              fontFamily: "'Fira Code', monospace",
+              fontFamily: "monospace",
               fontSize: "11px",
               marginTop: "8px",
             }}

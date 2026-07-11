@@ -12,7 +12,7 @@
 }
 
 .welcome-empty-80m h2 {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 16px;
   font-weight: 700;
   color: #4ade80;
@@ -20,7 +20,7 @@
 }
 
 .welcome-empty-80m p {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
   color: #e8f7ed;
   margin: 0;
@@ -50,7 +50,7 @@
   cursor: pointer;
   transition: all 0.15s ease;
   position: relative;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
 }
 
 .agent-tab:hover {
@@ -118,7 +118,7 @@
 }
 
 .sidebar-80m-sessions-header {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
@@ -129,7 +129,7 @@
 }
 
 .sidebar-80m-sessions-empty {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   color: #e8f7ed;
   text-align: center;
@@ -180,7 +180,7 @@
   background: transparent;
   border: none;
   outline: none;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 14px;
   color: #e8e8e8;
   caret-color: #4ade80;
@@ -191,7 +191,7 @@
 }
 
 .command-palette-esc {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   font-weight: 700;
   background: #1a1a1a;
@@ -209,7 +209,7 @@
 }
 
 .command-palette-empty {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
   color: #e8e8e8;
   text-align: center;
@@ -243,7 +243,7 @@
 }
 
 .command-palette-item-label {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
   font-weight: 700;
   color: #e8e8e8;
@@ -276,7 +276,7 @@
   border: 1px solid rgba(74, 222, 128, 0.15);
   background-color: rgba(36, 43, 39, 0.92);
   color: #4ade80;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -321,7 +321,7 @@
   background: rgba(74, 222, 128, 0.08);
   color: #d8ffe5;
   cursor: pointer;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.05em;

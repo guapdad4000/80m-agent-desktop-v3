@@ -140,6 +140,7 @@ export interface HermesDesktopAPI {
   navigateBrowser: (url: string) => Promise<void>;
   getBrowserState: () => Promise<{ url: string } | null>;
   onPlaywrightNavigated: (callback: (url: string) => void) => () => void;
+  openBrowserWindow: (url: string) => Promise<boolean>;
 
   // Voice
   transcribeAudio: (audioData: number[], mimeType?: string) => Promise<string>;

@@ -156,6 +156,7 @@ export function useChatRuntimeEvents({
           id: `error-${req.id}`,
           role: "assistant" as const,
           content: `**Error:** ${error}`,
+          createdAt: req.createdAt + 1,
         };
         const errorOverlayKey = requestDisplaySession(req) || req.localKey;
         cacheOverlayMessage(errorOverlayKey, errorMsg);

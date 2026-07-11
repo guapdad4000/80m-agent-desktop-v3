@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
-import { homedir } from "os";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_REPO,
@@ -71,7 +71,7 @@ export function sendMessageViaCli(
   const env: Record<string, string> = applyLongHaulEnv({
     ...(process.env as Record<string, string>),
     PATH: getEnhancedPath(),
-    HOME: homedir(),
+    HOME: HOST_HOME,
     HERMES_HOME: HERMES_HOME,
     PYTHONUNBUFFERED: "1",
   });

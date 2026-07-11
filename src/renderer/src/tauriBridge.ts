@@ -920,6 +920,7 @@ export const installTauriBridge = (): void => {
     getBrowserState: () => call("get_browser_state", {}, null),
     onPlaywrightNavigated: (callback) =>
       onEvent("playwright-navigated", callback),
+    openBrowserWindow: () => Promise.resolve(false),
     transcribeAudio: () => Promise.resolve(""),
     ttsSpeak: () => Promise.resolve(""),
   };

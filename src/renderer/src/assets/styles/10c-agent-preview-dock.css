@@ -66,10 +66,10 @@
   position: relative;
   min-height: 74px;
   display: grid;
-  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
   align-items: end;
   gap: 6px;
-  padding: 9px 10px 8px;
+  padding: 9px 10px 8px 200px;
   background: #c5cbc2;
   border-bottom: 6px solid #2b3a31;
 }
@@ -169,7 +169,7 @@
   outline: 0;
   background: transparent;
   color: #1f2a24;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
 }
 

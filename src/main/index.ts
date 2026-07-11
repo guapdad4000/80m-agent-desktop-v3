@@ -109,7 +109,7 @@ function createWindow(): void {
     backgroundColor: "#151816",
     hasShadow: true,
     titleBarStyle: process.platform === "darwin" ? "hidden" : undefined,
-    title: "80m Agent Desktop",
+    title: "Foleybot",
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -217,8 +217,8 @@ function setupUpdater(): void {
 }
 
 app.whenReady().then(() => {
-  app.name = "80m Agent Desktop";
-  electronApp.setAppUserModelId("com.80m.agent-desktop");
+  app.name = "Foleybot";
+  electronApp.setAppUserModelId("com.foleybot.desktop");
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);

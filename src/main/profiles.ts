@@ -1,9 +1,9 @@
 import { execFileSync } from "child_process";
 import { join } from "path";
-import { homedir } from "os";
 import { promises as fs } from "fs";
 import { existsSync } from "fs";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_REPO,
@@ -279,7 +279,7 @@ export async function createProfile(
       env: {
         ...process.env,
         PATH: getEnhancedPath(),
-        HOME: homedir(),
+        HOME: HOST_HOME,
         HERMES_HOME,
       },
       stdio: "pipe",
@@ -326,7 +326,7 @@ export function deleteProfile(name: string): {
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
         },
         stdio: "pipe",
@@ -353,7 +353,7 @@ export function setActiveProfile(name: string): void {
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
         },
         stdio: "pipe",

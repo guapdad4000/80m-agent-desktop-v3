@@ -324,7 +324,13 @@ const Layout80m: React.FC<Layout80mProps> = ({ playSplashLanding = false }) => {
       const detail = (
         event as CustomEvent<{ conversationId?: string; requestId?: string }>
       ).detail;
-      setActiveChatRuns((count) => Math.max(0, count - 1));
+      setActiveChatRuns((count) => {
+        const next = Math.max(0, count - 1);
+        if (next === 0 && activeProject) {
+          setShowPreview(true);
+        }
+        return next;
+      });
       if (detail?.conversationId) {
         setRunningConversationIds((current) => {
           const next = new Set(current);
@@ -340,7 +346,7 @@ const Layout80m: React.FC<Layout80mProps> = ({ playSplashLanding = false }) => {
       window.removeEventListener("chat-started", handleChatStarted);
       window.removeEventListener("chat-finished", handleChatFinished);
     };
-  }, []);
+  }, [activeProject, setShowPreview]);
 
   const renderMainContent = () => {
     const wrap = (_title: string, el: ReactNode) => (

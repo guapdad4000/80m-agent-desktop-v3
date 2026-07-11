@@ -8,7 +8,7 @@ const BackgroundLayers: React.FC = () => {
         <div className="background-layer-wash-primary" />
         <div className="background-layer-wash-secondary" />
       </div>
-      <ParticleField />
+      <StaticParticleField />
     </div>
   );
 };
@@ -21,79 +21,50 @@ function getResolvedTheme(): ThemeName {
     : "light";
 }
 
-const ParticleField: React.FC = () => {
+type Particle = {
+  x: number;
+  y: number;
+  size: number;
+};
+
+const StaticParticleField: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particlesRef = useRef<Particle[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    let rafId: number;
-    const themeRef = { current: getResolvedTheme() };
-    const PARTICLE_COUNT = 60;
-    const MAX_DIST = 120;
-    const MOUSE_REPEL_RADIUS = 150;
-    const MOUSE_REPEL_STRENGTH = 0.8;
 
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+    const PARTICLE_COUNT = 28;
+    const MAX_DIST = 135;
+
+    const ensureParticles = (width: number, height: number) => {
+      if (particlesRef.current.length === PARTICLE_COUNT) return;
+      particlesRef.current = Array.from({ length: PARTICLE_COUNT }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: Math.random() * 1.4 + 0.6,
+      }));
     };
-    resize();
-    window.addEventListener("resize", resize);
 
-    const mouseRef = { x: -1000, y: -1000 };
-    const onMouseMove = (e: MouseEvent) => {
-      mouseRef.x = e.clientX;
-      mouseRef.y = e.clientY;
-    };
-    window.addEventListener("mousemove", onMouseMove);
+    const render = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      canvas.width = Math.ceil(width * dpr);
+      canvas.height = Math.ceil(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
 
-    const themeObserver = new MutationObserver(() => {
-      themeRef.current = getResolvedTheme();
-    });
-    themeObserver.observe(document.documentElement, {
-      attributeFilter: ["data-theme"],
-    });
-
-    const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      size: Math.random() * 1.5 + 0.5,
-    }));
-
-    const draw = () => {
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-      const mouse = mouseRef;
-      const theme = themeRef.current;
-
-      for (const p of particles) {
-        p.vx += (Math.random() - 0.5) * 0.1;
-        p.vy += (Math.random() - 0.5) * 0.1;
-        p.vx *= 0.98;
-        p.vy *= 0.98;
-        const dx = p.x - mouse.x;
-        const dy = p.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < MOUSE_REPEL_RADIUS && dist > 0) {
-          const force =
-            ((MOUSE_REPEL_RADIUS - dist) / MOUSE_REPEL_RADIUS) *
-            MOUSE_REPEL_STRENGTH;
-          p.vx += (dx / dist) * force;
-          p.vy += (dy / dist) * force;
-        }
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < -10) p.x = w + 10;
-        if (p.x > w + 10) p.x = -10;
-        if (p.y < -10) p.y = h + 10;
-        if (p.y > h + 10) p.y = -10;
-      }
+      ensureParticles(width, height);
+      const particles = particlesRef.current;
+      const theme = getResolvedTheme();
+      const lineColor = theme === "dark" ? "#2f6f4e" : "#14532d";
+      const dotColor = theme === "dark" ? "#4ade80" : "#14532d";
 
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
@@ -101,51 +72,36 @@ const ParticleField: React.FC = () => {
           const b = particles[j];
           const dx = a.x - b.x;
           const dy = a.y - b.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < MAX_DIST) {
-            const mx = (a.x + b.x) / 2;
-            const my = (a.y + b.y) / 2;
-            const mDist = Math.sqrt((mx - mouse.x) ** 2 + (my - mouse.y) ** 2);
-            const highlight = mDist < MOUSE_REPEL_RADIUS ? 1 : 0;
-            const baseAlpha = (1 - d / MAX_DIST) * 0.4;
-            const alpha = baseAlpha + highlight * 0.3;
-            const color =
-              theme === "dark"
-                ? highlight
-                  ? "#4ade80"
-                  : "#2f6f4e"
-                : highlight
-                  ? "#166534"
-                  : "#14532d";
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < MAX_DIST) {
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
-            ctx.strokeStyle = color;
-            ctx.globalAlpha = Math.min(alpha, 1);
-            ctx.lineWidth = highlight ? 1.5 : 0.8;
+            ctx.strokeStyle = lineColor;
+            ctx.globalAlpha = (1 - distance / MAX_DIST) * 0.22;
+            ctx.lineWidth = 0.7;
             ctx.stroke();
           }
         }
       }
 
-      ctx.globalAlpha = 1;
-      for (const p of particles) {
+      ctx.globalAlpha = theme === "dark" ? 0.62 : 0.9;
+      for (const particle of particles) {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = theme === "dark" ? "#4ade80" : "#14532d";
-        ctx.globalAlpha = theme === "dark" ? 0.7 : 1;
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor;
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-
-      rafId = requestAnimationFrame(draw);
     };
 
-    draw();
+    render();
+    window.addEventListener("resize", render);
+    const themeObserver = new MutationObserver(render);
+    themeObserver.observe(document.documentElement, { attributeFilter: ["data-theme"] });
+
     return () => {
-      cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("resize", render);
       themeObserver.disconnect();
     };
   }, []);

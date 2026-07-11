@@ -22,7 +22,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ status }) => {
       <Animated80MLogo className="animated-80m-logo-loading" />
       <div
         style={{
-          fontFamily: "'Fira Code', monospace",
+          fontFamily: "monospace",
           fontSize: "13px",
           fontWeight: 700,
           color: "#4ade80",
@@ -54,7 +54,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ status }) => {
       {status && (
         <div
           style={{
-            fontFamily: "'Fira Code', monospace",
+            fontFamily: "monospace",
             fontSize: "10px",
             color: "#555",
             letterSpacing: "0.08em",

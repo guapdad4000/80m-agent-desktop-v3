@@ -1,7 +1,7 @@
 import { execFile } from "child_process";
 import { existsSync } from "fs";
-import { homedir } from "os";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_REPO,
@@ -110,7 +110,7 @@ function runHermesCommand(
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
           TERM: "dumb",
         },

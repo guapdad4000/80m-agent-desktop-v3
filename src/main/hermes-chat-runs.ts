@@ -41,6 +41,39 @@ function mapRunsUsage(usage?: HermesRunEvent["usage"]): {
   };
 }
 
+function normalizeFinalOutput(text: string): string {
+  return text.replace(/\r\n/g, "\n").trim();
+}
+
+function finalOutputDelta(streamed: string, finalOutput: string): string {
+  if (!finalOutput) return "";
+  if (!streamed) return finalOutput;
+  if (
+    finalOutput === streamed ||
+    normalizeFinalOutput(finalOutput) === normalizeFinalOutput(streamed)
+  ) {
+    return "";
+  }
+  if (finalOutput.startsWith(streamed)) {
+    return finalOutput.slice(streamed.length);
+  }
+  if (streamed.includes(finalOutput)) {
+    return "";
+  }
+
+  const maxOverlap = Math.min(streamed.length, finalOutput.length);
+  for (let len = maxOverlap; len > 0; len -= 1) {
+    if (streamed.endsWith(finalOutput.slice(0, len))) {
+      return finalOutput.slice(len);
+    }
+  }
+
+  // If the final run payload is a full answer that does not line up byte-for-byte
+  // with the streamed chunks, do not append it to the visible response. Appending
+  // here is what made completed desktop runs appear to double-send the answer.
+  return "";
+}
+
 export async function isRunsApiReady(profile?: string): Promise<boolean> {
   const result = await apiJson<{ features?: Record<string, boolean> }>(
     "/v1/capabilities",
@@ -109,13 +142,9 @@ export function sendMessageViaRunsApi(
       if (result.data?.session_id) sessionId = result.data.session_id;
       if (status === "completed") {
         const output = result.data?.output || "";
-        if (output && output !== fullResponse) {
-          const delta = output.startsWith(fullResponse)
-            ? output.slice(fullResponse.length)
-            : output;
-          fullResponse = output;
-          cb.onChunk(delta);
-        }
+        const delta = finalOutputDelta(fullResponse, output);
+        if (delta) cb.onChunk(delta);
+        if (output) fullResponse = output;
         if (result.data?.usage && cb.onUsage) {
           cb.onUsage(mapRunsUsage(result.data.usage));
         }
@@ -174,12 +203,10 @@ export function sendMessageViaRunsApi(
       return;
     }
     if (event.event === "run.completed") {
-      if (event.output && event.output !== fullResponse) {
-        const delta = event.output.startsWith(fullResponse)
-          ? event.output.slice(fullResponse.length)
-          : event.output;
+      if (event.output) {
+        const delta = finalOutputDelta(fullResponse, event.output);
+        if (delta) cb.onChunk(delta);
         fullResponse = event.output;
-        cb.onChunk(delta);
       }
       if (event.usage && cb.onUsage) cb.onUsage(mapRunsUsage(event.usage));
       finish();

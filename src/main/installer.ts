@@ -7,6 +7,7 @@ import { getModelConfig, getConnectionConfig } from "./config";
 import { stripAnsi } from "./utils";
 import { setupAskpass, type AskpassHandle } from "./askpass";
 import {
+  HOST_HOME,
   HERMES_ENV_FILE,
   HERMES_HOME,
   HERMES_PYTHON,
@@ -27,6 +28,7 @@ export {
   HERMES_REPO,
   HERMES_SCRIPT,
   HERMES_VENV,
+  HOST_HOME,
   getEnhancedPath,
 } from "./installer-paths";
 export type { HermesCommandResult } from "./installer-command";
@@ -137,7 +139,7 @@ export async function verifyInstall(): Promise<boolean> {
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
         },
         timeout: 15000,
@@ -179,7 +181,7 @@ export async function getHermesVersion(): Promise<string | null> {
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
         },
         timeout: 15000,
@@ -224,7 +226,7 @@ export function runHermesDoctor(): string {
       env: {
         ...process.env,
         PATH: getEnhancedPath(),
-        HOME: homedir(),
+        HOME: HOST_HOME,
         HERMES_HOME,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -283,7 +285,7 @@ export async function runClawMigrate(
       env: {
         ...process.env,
         PATH: getEnhancedPath(),
-        HOME: homedir(),
+        HOME: HOST_HOME,
         HERMES_HOME,
         TERM: "dumb",
       },
@@ -340,7 +342,7 @@ export async function runHermesUpdate(
       env: {
         ...process.env,
         PATH: getEnhancedPath(),
-        HOME: homedir(),
+        HOME: HOST_HOME,
         HERMES_HOME,
         TERM: "dumb",
       },

@@ -11,7 +11,7 @@
   align-items: center;
   padding: 3px 8px;
   border-radius: 100px;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -36,7 +36,7 @@
 
 /* === 80M SECTION LABEL === */
 .section-label-80m {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 700;
   color: #e8e8e8;

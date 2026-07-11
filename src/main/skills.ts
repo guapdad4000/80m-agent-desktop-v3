@@ -1,8 +1,8 @@
 import { execFileSync } from "child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import {
+  HOST_HOME,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_SCRIPT,
@@ -143,7 +143,7 @@ export function searchSkills(query: string): SkillSearchResult[] {
         env: {
           ...process.env,
           PATH: getEnhancedPath(),
-          HOME: homedir(),
+          HOME: HOST_HOME,
           HERMES_HOME,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -248,7 +248,7 @@ export function installSkill(
       env: {
         ...process.env,
         PATH: getEnhancedPath(),
-        HOME: homedir(),
+        HOME: HOST_HOME,
         HERMES_HOME,
       },
       stdio: "pipe",
@@ -277,7 +277,7 @@ export function uninstallSkill(
       env: {
         ...process.env,
         PATH: getEnhancedPath(),
-        HOME: homedir(),
+        HOME: HOST_HOME,
         HERMES_HOME,
       },
       stdio: "pipe",

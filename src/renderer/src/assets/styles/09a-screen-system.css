@@ -44,7 +44,7 @@
   border: 1px solid rgba(74, 222, 128, 0.5);
   background: rgba(31, 38, 42, 0.94);
   color: #d8ffe5;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -181,7 +181,7 @@
 }
 
 .conversation-tab-title {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 800;
   color: #d8ffe5;
@@ -357,7 +357,7 @@
   background: transparent;
   color: #f4fff7;
   cursor: pointer;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 800;
   padding: 0;
@@ -396,7 +396,7 @@
 }
 
 .screen-header-80m-title {
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 13px;
   font-weight: 700;
   color: #4ade80;

@@ -113,7 +113,7 @@
   border-radius: 7px;
   background: rgba(31, 38, 35, 0.86);
   color: #d8ffe5;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
@@ -201,7 +201,7 @@
   background: transparent;
   color: #f4fff7;
   cursor: pointer;
-  font-family: "Fira Code", monospace;
+  font-family: monospace;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.03em;
