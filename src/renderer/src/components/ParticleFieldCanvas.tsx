@@ -4,6 +4,8 @@ const PARTICLE_COUNT = 60;
 const MAX_DIST = 120;
 const MOUSE_REPEL_RADIUS = 150;
 const MOUSE_REPEL_STRENGTH = 0.8;
+const TARGET_FPS = 24;
+const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
 
 interface Particle {
   x: number;
@@ -24,12 +26,15 @@ const ParticleFieldCanvas: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let rafId: number;
+    let lastFrameTime = 0;
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      ctx.scale(dpr, dpr);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas.width = Math.ceil(window.innerWidth * dpr);
+      canvas.height = Math.ceil(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
     window.addEventListener("resize", resize);
@@ -50,7 +55,14 @@ const ParticleFieldCanvas: React.FC = () => {
       }));
     }
 
-    const draw = () => {
+    const draw = (now: number) => {
+      rafId = requestAnimationFrame(draw);
+
+      if (document.hidden || now - lastFrameTime < FRAME_INTERVAL_MS) {
+        return;
+      }
+      lastFrameTime = now;
+
       const w = window.innerWidth;
       const h = window.innerHeight;
       ctx.clearRect(0, 0, w, h);
@@ -125,11 +137,9 @@ const ParticleFieldCanvas: React.FC = () => {
         ctx.fillStyle = "#4ade80";
         ctx.fill();
       }
-
-      rafId = requestAnimationFrame(draw);
     };
 
-    draw();
+    rafId = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(rafId);

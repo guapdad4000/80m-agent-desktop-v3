@@ -1,5 +1,8 @@
 import React, { useEffect, useRef } from "react";
 
+const TARGET_FPS = 20;
+const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
+
 const BackgroundLayers: React.FC = () => {
   return (
     <div className="background-layers" aria-hidden="true">
@@ -30,15 +33,20 @@ const ParticleField: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let rafId: number;
+    let lastFrameTime = 0;
     const themeRef = { current: getResolvedTheme() };
-    const PARTICLE_COUNT = 60;
-    const MAX_DIST = 120;
+    const PARTICLE_COUNT = 36;
+    const MAX_DIST = 110;
     const MOUSE_REPEL_RADIUS = 150;
     const MOUSE_REPEL_STRENGTH = 0.8;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas.width = Math.ceil(window.innerWidth * dpr);
+      canvas.height = Math.ceil(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
     window.addEventListener("resize", resize);
@@ -65,9 +73,16 @@ const ParticleField: React.FC = () => {
       size: Math.random() * 1.5 + 0.5,
     }));
 
-    const draw = () => {
-      const w = canvas.width;
-      const h = canvas.height;
+    const draw = (now: number) => {
+      rafId = requestAnimationFrame(draw);
+
+      if (document.hidden || now - lastFrameTime < FRAME_INTERVAL_MS) {
+        return;
+      }
+      lastFrameTime = now;
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
       ctx.clearRect(0, 0, w, h);
       const mouse = mouseRef;
       const theme = themeRef.current;
@@ -137,11 +152,9 @@ const ParticleField: React.FC = () => {
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-
-      rafId = requestAnimationFrame(draw);
     };
 
-    draw();
+    rafId = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
